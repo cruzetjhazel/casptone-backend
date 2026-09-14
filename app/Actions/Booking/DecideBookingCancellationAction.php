@@ -53,4 +53,9 @@ class DecideBookingCancellationAction
 
         return $fresh;
     }
+        public function hasPendingRescheduleRequest(): bool
+    {
+        return $this->reschedule_requested_at !== null && $this->reschedule_decision === null;
+    }
+
 }

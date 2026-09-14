@@ -1,0 +1,25 @@
+# Place custom photographer images here
+
+## Image naming convention:
+- `{slug}-logo.{jpg|jpeg|png|webp}` - Profile image (400×400 px)
+- `{slug}-cover.{jpg|jpeg|png|webp}` - Cover image (1200×400 px)
+
+## Slugs:
+- `hh-production`
+- `kap-studio`
+- `amaras-studio`
+- `cj-creatives`
+- `joesol-photography`
+- `frederick-robelas`
+
+## Example:
+```
+images/
+├── hh-production-logo.jpg
+├── hh-production-cover.jpg
+├── kap-studio-logo.jpg
+├── kap-studio-cover.jpg
+└── ...
+```
+
+If images are not found, the seeder will generate colorful placeholder images automatically.

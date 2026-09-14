@@ -29,11 +29,14 @@ class RecordOnsitePaymentAction
 
         $remaining = $booking->remainingBalance();
 
-        if (round((float) $data['amount'], 2) !== round($remaining, 2)) {
+        if ((float) $data['amount'] <= 0 || (float) $data['amount'] > $remaining) {
             throw ValidationException::withMessages([
-                'amount' => ['The amount must match the remaining balance of '.number_format($remaining, 2).'.'],
+                'amount' => ['The amount must be greater than zero and no more than the remaining balance of '.number_format($remaining, 2).'.'],
             ]);
         }
+
+        $amount = round((float) $data['amount'], 2);
+        $isFullyPaid = $amount >= round($remaining, 2);
 
         $payment = Payment::create([
             'booking_id' => $booking->id,
@@ -41,28 +44,37 @@ class RecordOnsitePaymentAction
             'photographer_id' => $booking->photographer_id,
             'type' => PaymentType::Onsite,
             'method' => 'cash',
-            'plan' => $booking->payment_plan->value,
-            'amount' => $data['amount'],
+            'plan' => $booking->payment_plan?->value,
+            'amount' => $amount,
             'reference_number' => null,
             'payment_date' => $data['payment_date'],
             'notes' => $data['notes'] ?? null,
         ]);
 
-        $booking->update(['payment_status' => BookingPaymentStatus::FullyPaid]);
+        $booking->update([
+            'payment_status' => $isFullyPaid
+                ? BookingPaymentStatus::FullyPaid
+                : BookingPaymentStatus::PartiallyPaid,
+        ]);
 
         $freshBooking = $booking->fresh();
         $freshPayment = $payment->fresh();
 
         $freshBooking->client->notify(new \App\Notifications\Payment\OnsitePaymentRecordedNotification($freshPayment));
-        $freshBooking->client->notify(new \App\Notifications\Payment\FullPaymentCompletedNotification($freshBooking));
-        $freshBooking->photographer->notify(new \App\Notifications\Payment\FullPaymentCompletedNotification($freshBooking));
+        if ($isFullyPaid) {
+            $freshBooking->client->notify(new \App\Notifications\Payment\FullPaymentCompletedNotification($freshBooking));
+            $freshBooking->photographer->notify(new \App\Notifications\Payment\FullPaymentCompletedNotification($freshBooking));
+        }
 
         $this->activityLogger->execute(
             causer: $freshBooking->photographer,
             subject: $freshPayment,
             action: 'payment.onsite_recorded',
             description: "Recorded onsite payment for booking #{$freshBooking->id}",
-            metadata: ['amount' => $data['amount']],
+            metadata: [
+                'amount' => $amount,
+                'remaining_balance' => $freshBooking->remainingBalance(),
+            ],
         );
 
         return $freshPayment;

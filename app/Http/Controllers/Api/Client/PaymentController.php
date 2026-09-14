@@ -43,11 +43,19 @@ class PaymentController extends Controller
             ],
             'amounts' => [
                 'total_price' => $booking->total_price,
+                'total_amount' => $booking->total_price,
+                'amount_paid' => $booking->totalPaid(),
+                'remaining_balance' => $booking->remainingBalance(),
                 'full_payment_amount' => $booking->onlineAmountDueFor(PaymentPlan::Full),
                 'half_payment_amount' => $booking->onlineAmountDueFor(PaymentPlan::Half),
             ],
             'booking_status' => $booking->status->value,
             'payment_status' => $booking->payment_status->value,
+            'payment_plan' => $booking->payment_plan?->value,
+            'payment_actions' => [
+                'can_submit_online_payment' => $booking->status->value === 'confirmed'
+                    && $booking->payment_status->value === 'pending',
+            ],
         ]);
     }
 

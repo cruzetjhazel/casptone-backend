@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\PublicPhotographerAddOnController;
 use App\Http\Controllers\Api\PublicPhotographerPackageController;
 use App\Http\Controllers\Api\Photographer\AvailabilityWindowController;
 use App\Http\Controllers\Api\Photographer\BlockedDateController;
+use App\Http\Controllers\Api\Photographer\BookingHourController;
 use App\Http\Controllers\Api\PublicPhotographerAvailabilityController;
 use App\Http\Controllers\Api\Client\BookingController as ClientBookingController;
 use App\Http\Controllers\Api\Photographer\BookingController as PhotographerBookingController;
@@ -160,6 +161,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('blocked-dates', [BlockedDateController::class, 'store']);
         Route::patch('blocked-dates/{blockedDate}', [BlockedDateController::class, 'update']);
         Route::delete('blocked-dates/{blockedDate}', [BlockedDateController::class, 'destroy']);
+
+        Route::get('booking-hours', [BookingHourController::class, 'index']);
+        Route::post('booking-hours', [BookingHourController::class, 'store']);
+        Route::patch('booking-hours/{bookingHour}', [BookingHourController::class, 'update']);
+        Route::delete('booking-hours/{bookingHour}', [BookingHourController::class, 'destroy']);
+        Route::patch('booking-hours/interval', [BookingHourController::class, 'updateInterval']);
     });
 });
 
@@ -169,7 +176,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings', [ClientBookingController::class, 'store']);
         Route::get('bookings/{booking}', [ClientBookingController::class, 'show']);
         Route::post('bookings/{booking}/request-cancellation', [ClientBookingController::class, 'requestCancellation']);
-
+        Route::post('bookings/{booking}/reschedule', [ClientBookingController::class, 'requestReschedule']);
+        Route::post('bookings/{booking}/request-modification', [ClientBookingController::class, 'requestModification']);
         Route::get('bookings/{booking}/payment-info', [ClientPaymentController::class, 'paymentInfo']);
         Route::post('bookings/{booking}/payments', [ClientPaymentController::class, 'store']);
         Route::get('payments', [ClientPaymentController::class, 'index']);
@@ -182,7 +190,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings/{booking}/reject', [PhotographerBookingController::class, 'reject']);
         Route::post('bookings/{booking}/cancellation/approve', [PhotographerBookingController::class, 'approveCancellation']);
         Route::post('bookings/{booking}/cancellation/reject', [PhotographerBookingController::class, 'rejectCancellation']);
+        Route::post('bookings/{booking}/reschedule/approve', [PhotographerBookingController::class, 'approveReschedule']);
+        Route::post('bookings/{booking}/reschedule/reject', [PhotographerBookingController::class, 'rejectReschedule']);
         Route::patch('bookings/{booking}/service-tracker', [ServiceTrackerController::class, 'update']);
+        Route::post('bookings/{booking}/complete', [ServiceTrackerController::class, 'complete']);
 
         Route::get('payment-config', [PaymentConfigController::class, 'show']);
         Route::post('payment-config', [PaymentConfigController::class, 'store']);

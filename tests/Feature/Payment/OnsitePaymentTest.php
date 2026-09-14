@@ -58,13 +58,28 @@ class OnsitePaymentTest extends TestCase
         $this->assertEquals('fully_paid', $booking->fresh()->payment_status->value);
     }
 
-    public function test_amount_must_match_the_remaining_balance(): void
+    public function test_photographer_can_record_a_partial_onsite_payment(): void
     {
         $booking = $this->halfPaidBooking(10000);
         Sanctum::actingAs($booking->photographer);
 
         $this->postJson("/api/photographer/bookings/{$booking->id}/payments/onsite", [
             'amount' => 4000,
+            'payment_date' => now()->format('Y-m-d'),
+        ])->assertOk()
+            ->assertJsonPath('data.booking.payment_status', 'partially_paid')
+            ->assertJsonPath('data.booking.remaining_balance', 1000);
+
+        $this->assertEquals('partially_paid', $booking->fresh()->payment_status->value);
+    }
+
+    public function test_amount_cannot_exceed_the_remaining_balance(): void
+    {
+        $booking = $this->halfPaidBooking(10000);
+        Sanctum::actingAs($booking->photographer);
+
+        $this->postJson("/api/photographer/bookings/{$booking->id}/payments/onsite", [
+            'amount' => 6000,
             'payment_date' => now()->format('Y-m-d'),
         ])->assertStatus(422);
     }

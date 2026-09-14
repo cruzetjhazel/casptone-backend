@@ -5,6 +5,7 @@ namespace App\Services\Photographer;
 use App\Enums\BookingStatus;
 use App\Models\AvailabilityWindow;
 use App\Models\BlockedDate;
+use App\Models\BookingHour;
 use App\Models\Booking;
 use App\Models\User;
 use Carbon\Carbon;
@@ -18,10 +19,19 @@ use Illuminate\Support\Collection;
  * booking request is still entirely up to the photographer; this service
  * only determines whether a request can be *sent* for a given date/time.
  *
- * AvailabilityWindow is optional. If a photographer has set one for a date,
- * it narrows that date's bookable hours (e.g. "only 9am-5pm"). If there's no
- * window, the whole day (00:00-24:00) is treated as open, subject only to
- * blocks and bookings.
+ * Bookable hours for a date come from two layers, both optional:
+ *  - BookingHour: the photographer's recurring "usual hours" per weekday
+ *    (multiple periods per day supported, e.g. 6-12 and 2-8). If a
+ *    photographer has never configured any BookingHour rows, every day
+ *    defaults to fully open (00:00-24:00) for backward compatibility. Once
+ *    at least one BookingHour row exists, any weekday with none stays
+ *    closed for that reason (e.g. "Sunday: unavailable").
+ *  - AvailabilityWindow: a one-off ADDITIVE period for one specific date,
+ *    layered on top of whatever BookingHour resolves to that day — e.g. a
+ *    photographer normally closed Sundays opening up one specific Sunday.
+ *
+ * BlockedDate (full-day or partial) still carves out unavailable time from
+ * whatever periods result above, same as before.
  */
 class AvailabilityService
 {
@@ -31,7 +41,7 @@ class AvailabilityService
         BookingStatus::Confirmed,
     ];
 
-    private const SLOT_STEP_MINUTES = 30;
+    private const DEFAULT_SLOT_STEP_MINUTES = 60;
 
     /**
      * Per-day availability for a month.
@@ -40,11 +50,20 @@ class AvailabilityService
      */
     public function getMonthSummary(User $photographer, string $start, string $end, int $durationMinutes): array
     {
-        $windows = AvailabilityWindow::query()
+        $stepMinutes = $this->slotStepMinutes($photographer);
+
+        $bookingHoursByWeekday = BookingHour::query()
+            ->where('user_id', $photographer->id)
+            ->get()
+            ->groupBy('day_of_week');
+
+        $hasAnyBookingHours = $bookingHoursByWeekday->isNotEmpty();
+
+        $windowsByDate = AvailabilityWindow::query()
             ->where('user_id', $photographer->id)
             ->whereBetween('date', [$start, $end])
             ->get()
-            ->keyBy(fn ($w) => $w->date->format('Y-m-d'));
+            ->groupBy(fn ($w) => $w->date->format('Y-m-d'));
 
         $blocksByDate = BlockedDate::query()
             ->where('user_id', $photographer->id)
@@ -70,11 +89,18 @@ class AvailabilityService
                 continue;
             }
 
-            $window = $windows->get($dateStr);
+            $periods = $this->resolvePeriods(
+                $dateStr,
+                $day->dayOfWeek,
+                $bookingHoursByWeekday,
+                $hasAnyBookingHours,
+                $windowsByDate->get($dateStr, collect())
+            );
+
             $dayBlocks = $blocksByDate->get($dateStr, collect());
             $dayBookings = $bookingsByDate->get($dateStr, collect());
 
-            $summary[$dateStr] = $this->dayStatus($dateStr, $window, $dayBlocks, $dayBookings, $durationMinutes);
+            $summary[$dateStr] = $this->dayStatus($periods, $dayBlocks, $dayBookings, $durationMinutes, $stepMinutes);
         }
 
         return $summary;
@@ -83,14 +109,24 @@ class AvailabilityService
     /**
      * All valid booking start times on a single date for a given duration.
      *
-     * @return string[] "HH:mm" values, in SLOT_STEP_MINUTES increments
+     * @return string[] "HH:mm" values, in the photographer's configured step
      */
     public function getAvailableStartTimes(User $photographer, string $date, int $durationMinutes): array
     {
-        $window = AvailabilityWindow::query()
+        $stepMinutes = $this->slotStepMinutes($photographer);
+        $carbonDate = Carbon::parse($date);
+
+        $bookingHoursForDay = BookingHour::query()
+            ->where('user_id', $photographer->id)
+            ->where('day_of_week', $carbonDate->dayOfWeek)
+            ->get();
+
+        $hasAnyBookingHours = BookingHour::query()->where('user_id', $photographer->id)->exists();
+
+        $windowsForDate = AvailabilityWindow::query()
             ->where('user_id', $photographer->id)
             ->where('date', $date)
-            ->first();
+            ->get();
 
         $blocks = BlockedDate::query()
             ->where('user_id', $photographer->id)
@@ -103,89 +139,131 @@ class AvailabilityService
             ->where('event_date', $date)
             ->get();
 
-        return $this->availableStartTimes($date, $window, $blocks, $bookings, $durationMinutes);
+        $periods = $this->resolvePeriods(
+            $date,
+            $carbonDate->dayOfWeek,
+            collect([$carbonDate->dayOfWeek => $bookingHoursForDay]),
+            $hasAnyBookingHours,
+            $windowsForDate
+        );
+
+        return $this->availableStartTimes($date, $periods, $blocks, $bookings, $durationMinutes, $stepMinutes);
     }
 
-    private function dayStatus(string $dateStr, ?AvailabilityWindow $window, Collection $blocks, Collection $bookings, int $durationMinutes): string
+    private function slotStepMinutes(User $photographer): int
     {
+        return $photographer->slot_interval_minutes ?: self::DEFAULT_SLOT_STEP_MINUTES;
+    }
+
+    /**
+     * Resolves the bookable periods for one date as a list of [start, end]
+     * Carbon pairs (plural — a day can have multiple periods, e.g. a
+     * morning and an evening block).
+     *
+     * @return array<array{0: Carbon, 1: Carbon}>
+     */
+    private function resolvePeriods(
+        string $dateStr,
+        int $dayOfWeek,
+        Collection $bookingHoursByWeekday,
+        bool $hasAnyBookingHours,
+        Collection $windowsForDate
+    ): array {
+        $hoursForDay = $bookingHoursByWeekday->get($dayOfWeek, collect());
+
+        if ($hoursForDay->isNotEmpty()) {
+            $periods = $hoursForDay
+                ->map(fn (BookingHour $h) => [
+                    Carbon::parse("{$dateStr} {$h->start_time}"),
+                    Carbon::parse("{$dateStr} {$h->end_time}"),
+                ])
+                ->values()
+                ->all();
+        } elseif (! $hasAnyBookingHours) {
+            // Photographer hasn't configured usual hours at all yet —
+            // preserve the old "fully open" default.
+            $periods = [[Carbon::parse("{$dateStr} 00:00"), Carbon::parse("{$dateStr} 00:00")->addDay()]];
+        } else {
+            // Usual hours ARE configured, just not for this weekday
+            // (e.g. "Sunday: unavailable") — closed unless a one-off
+            // AvailabilityWindow opens it below.
+            $periods = [];
+        }
+
+        // One-off windows are additive on top of the above, even on an
+        // otherwise-closed day.
+        foreach ($windowsForDate as $window) {
+            $periods[] = [
+                Carbon::parse("{$dateStr} {$window->start_time}"),
+                Carbon::parse("{$dateStr} {$window->end_time}"),
+            ];
+        }
+
+        return $periods;
+    }
+
+    private function dayStatus(array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes): string
+    {
+        if (empty($periods)) {
+            return 'unavailable';
+        }
+
         // Full-day block still voids the whole day outright.
         if ($blocks->contains(fn (BlockedDate $b) => $b->isFullDay())) {
             return 'unavailable';
         }
 
-        // Single simulation of the day — openSlots is derived from it, and
-        // totalSlots is now a closed-form count of the same window with no
-        // blocks/bookings applied, instead of re-running the simulation a
-        // second time just to get a baseline.
-        $openSlots = count($this->availableStartTimes($dateStr, $window, $blocks, $bookings, $durationMinutes));
+        $dateStr = null; // periods carry their own dates via Carbon instances.
+
+        $openSlots = count($this->startTimesForPeriods($periods, $blocks, $bookings, $durationMinutes, $stepMinutes));
 
         if ($openSlots === 0) {
             return 'unavailable';
         }
 
-        $totalSlots = $this->totalPossibleSlots($dateStr, $window, $durationMinutes);
+        // Counted the same way as $openSlots (no blocks/bookings applied) so
+        // overlapping periods — e.g. a one-off AvailabilityWindow layered on
+        // top of an already fully-open fallback day — can't inflate this
+        // beyond what openSlots could ever reach. Summing each period's slot
+        // count independently (the old approach) double-counted overlapping
+        // time and produced false "partial" statuses on days nothing was
+        // actually booked or blocked.
+        $totalSlots = count($this->startTimesForPeriods($periods, collect(), collect(), $durationMinutes, $stepMinutes));
 
         return $openSlots < $totalSlots ? 'partial' : 'available';
     }
 
     /**
-     * Slot count for the day/window with no blocks or bookings applied —
-     * the baseline used to detect whether any slots got carved out. Computed
-     * arithmetically (window length vs. duration/step) instead of walking
-     * the day minute-by-minute, since with no busy ranges every step in
-     * that walk would trivially be open anyway.
+     * Public-facing single-date entry point kept separate from the
+     * multi-period walker so getAvailableStartTimes() can format dates.
      */
-    private function totalPossibleSlots(string $dateStr, ?AvailabilityWindow $window, int $durationMinutes): int
+    private function availableStartTimes(string $dateStr, array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes): array
     {
-        [$windowStart, $windowEnd] = $this->resolveWindow($dateStr, $window);
-        // Cast explicitly: Carbon's diffInMinutes() isn't guaranteed to
-        // return a plain int across versions (some configurations return
-        // float), and intdiv() requires strict int arguments.
-        $totalMinutes = (int) $windowStart->diffInMinutes($windowEnd);
-
-        if ($totalMinutes < $durationMinutes) {
-            return 0;
+        if (empty($periods)) {
+            return [];
         }
 
-        return intdiv($totalMinutes - $durationMinutes, self::SLOT_STEP_MINUTES) + 1;
-    }
-
-    /**
-     * Resolves the bookable [start, end] for a date: the AvailabilityWindow
-     * if the photographer set one, otherwise the full day (00:00-24:00).
-     */
-    private function resolveWindow(string $dateStr, ?AvailabilityWindow $window): array
-    {
-        $windowStart = $window
-            ? Carbon::parse("{$dateStr} {$window->start_time}")
-            : Carbon::parse("{$dateStr} 00:00");
-        $windowEnd = $window
-            ? Carbon::parse("{$dateStr} {$window->end_time}")
-            : Carbon::parse("{$dateStr} 00:00")->addDay();
-
-        return [$windowStart, $windowEnd];
-    }
-
-    /**
-     * Walks the day (or the narrower window, if one is set) in
-     * SLOT_STEP_MINUTES increments and keeps any start time whose
-     * [start, start+duration] doesn't overlap a block or booking.
-     */
-    private function availableStartTimes(string $dateStr, ?AvailabilityWindow $window, Collection $blocks, Collection $bookings, int $durationMinutes): array
-    {
-        // A full-day block (start_time is null) voids the entire day.
         if ($blocks->contains(fn (BlockedDate $b) => $b->isFullDay())) {
             return [];
         }
 
-        // No explicit AvailabilityWindow = the photographer hasn't narrowed
-        // this date's hours, so the whole day is open by default. Blocks and
-        // bookings below are still what actually carve out unavailable time.
-        [$windowStart, $windowEnd] = $this->resolveWindow($dateStr, $window);
+        return $this->startTimesForPeriods($periods, $blocks, $bookings, $durationMinutes, $stepMinutes, $dateStr);
+    }
 
+    /**
+     * Walks each period in stepMinutes increments and keeps any start time
+     * whose [start, start+duration] doesn't overlap a block or booking, and
+     * doesn't spill past the end of its own period.
+     */
+    private function startTimesForPeriods(array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes, ?string $dateStrForBookings = null): array
+    {
         $busyRanges = [];
 
         foreach ($blocks as $block) {
+            if ($block->isFullDay()) {
+                continue; // handled by the early-return in callers
+            }
+            $dateStr = $block->date->format('Y-m-d');
             $busyRanges[] = [
                 Carbon::parse("{$dateStr} {$block->start_time}"),
                 Carbon::parse("{$dateStr} {$block->end_time}"),
@@ -204,29 +282,35 @@ class AvailabilityService
         }
 
         $slots = [];
-        $cursor = $windowStart->copy();
 
-        while (true) {
-            $slotEnd = $cursor->copy()->addMinutes($durationMinutes);
+        foreach ($periods as [$periodStart, $periodEnd]) {
+            $cursor = $periodStart->copy();
 
-            if ($slotEnd->gt($windowEnd)) {
-                break;
-            }
+            while (true) {
+                $slotEnd = $cursor->copy()->addMinutes($durationMinutes);
 
-            $overlaps = false;
-            foreach ($busyRanges as $range) {
-                if ($cursor->lt($range[1]) && $slotEnd->gt($range[0])) {
-                    $overlaps = true;
+                if ($slotEnd->gt($periodEnd)) {
                     break;
                 }
-            }
 
-            if (! $overlaps) {
-                $slots[] = $cursor->format('H:i');
-            }
+                $overlaps = false;
+                foreach ($busyRanges as $range) {
+                    if ($cursor->lt($range[1]) && $slotEnd->gt($range[0])) {
+                        $overlaps = true;
+                        break;
+                    }
+                }
 
-            $cursor->addMinutes(self::SLOT_STEP_MINUTES);
+                $formatted = $cursor->format('H:i');
+                if (! $overlaps && ! in_array($formatted, $slots, true)) {
+                    $slots[] = $formatted;
+                }
+
+                $cursor->addMinutes($stepMinutes);
+            }
         }
+
+        sort($slots);
 
         return $slots;
     }

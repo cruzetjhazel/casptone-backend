@@ -22,6 +22,21 @@ class BookingPolicy
         return $user->id === $booking->client_id;
     }
 
+    public function requestReschedule(User $user, Booking $booking): bool
+    {
+        return $user->id === $booking->client_id;
+    }
+
+    public function decideReschedule(User $user, Booking $booking): bool
+    {
+        return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();
+    }
+
+    public function modify(User $user, Booking $booking): bool
+    {
+        return $user->id === $booking->client_id;
+    }
+
     public function respond(User $user, Booking $booking): bool
     {
         return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();

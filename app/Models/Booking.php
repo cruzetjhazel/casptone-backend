@@ -13,7 +13,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use App\Observers\BookingObserver;
 
+#[ObservedBy([BookingObserver::class])]
 class Booking extends Model
 {
     use HasFactory;
@@ -29,6 +32,9 @@ class Booking extends Model
         'subtotal', 'total_price', 'status', 'hold_expires_at',
         'rejection_reason', 'cancellation_reason', 'cancellation_requested_at',
         'cancellation_decision', 'cancellation_decided_at',
+        'requested_event_date', 'requested_start_time', 'reschedule_requested_at',
+        'reschedule_decision', 'reschedule_decided_at',
+        'modification_type', 'modification_reason', 'modification_requested_at',
         'payment_plan', 'payment_status',
         'service_status', 'service_status_updated_at',
     ];
@@ -50,6 +56,12 @@ class Booking extends Model
             'hold_expires_at' => 'datetime',
             'cancellation_requested_at' => 'datetime',
             'cancellation_decided_at' => 'datetime',
+            'requested_event_date' => 'date:Y-m-d',
+            'reschedule_requested_at' => 'datetime',
+            'reschedule_decision' => CancellationDecision::class,
+            'reschedule_decided_at' => 'datetime',
+            'modification_requested_at' => 'datetime',
+            'rescheduled_at' => 'datetime',
             'payment_plan' => PaymentPlan::class,
             'payment_status' => BookingPaymentStatus::class,
             'service_status' => ServiceTrackerStatus::class,
@@ -94,6 +106,11 @@ class Booking extends Model
         return $this->cancellation_requested_at !== null && $this->cancellation_decision === null;
     }
 
+    public function hasPendingRescheduleRequest(): bool
+    {
+        return $this->reschedule_requested_at !== null && $this->reschedule_decision === null;
+    }
+
     /**
      * The amount due online for a given payment plan (§8.2, §8.8).
      * Half Payment = 50% online + 50% remaining balance; Full Payment = 100% online.
@@ -126,7 +143,6 @@ class Booking extends Model
     public function isEligibleForOnsitePayment(): bool
     {
         return $this->status === BookingStatus::Confirmed
-            && $this->payment_plan === PaymentPlan::Half
             && $this->payment_status !== BookingPaymentStatus::FullyPaid;
     }
 
@@ -138,5 +154,43 @@ class Booking extends Model
     public function canManageServiceTracker(): bool
     {
         return $this->status === BookingStatus::Confirmed;
+    }
+
+    /**
+     * True only once the photographer's explicit completion action becomes
+     * valid: still Confirmed, and the service tracker has reached its final
+     * stage (Delivered). BookingStatus never flips to Completed on its own —
+     * see MarkServiceCompletedAction, the only caller of this check.
+     */
+    public function canCompleteService(): bool
+    {
+        return $this->status === BookingStatus::Confirmed
+            && $this->service_status === ServiceTrackerStatus::Delivered;
+    }
+
+    /**
+     * Cancellation is only available before the service has actually
+     * started: a Pending request, or a Confirmed booking that's still
+     * pre-event (service_status null or Upcoming — event_day/editing/
+     * delivered/completed all count as "started").
+     */
+    public function isEligibleForCancellationRequest(): bool
+    {
+        if ($this->status === BookingStatus::Pending) {
+            return true;
+        }
+
+        return $this->status === BookingStatus::Confirmed
+            && in_array($this->service_status, [null, ServiceTrackerStatus::Upcoming], true);
+    }
+
+    /**
+     * True once the booking's required payment (per its payment plan) has
+     * been settled — used by BookingObserver to auto-advance the service
+     * tracker from null to Upcoming.
+     */
+    public function isPaymentSettled(): bool
+    {
+        return in_array($this->payment_status, [BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid], true);
     }
 }

@@ -17,7 +17,3 @@ Schedule::call(fn () => app(ExpireStaleBookingHoldsAction::class)->execute())
     ->name('expire-stale-booking-holds')
     ->withoutOverlapping();
 
-Schedule::call(fn () => app(RunServiceProgressTransitionsAction::class)->execute())
-    ->everyFifteenMinutes()
-    ->name('run-service-progress-transitions')
-    ->withoutOverlapping();

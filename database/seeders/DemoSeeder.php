@@ -10,6 +10,7 @@ use App\Enums\PackageStatus;
 use App\Enums\PaymentPlan;
 use App\Enums\PhotographerApplicationStatus;
 use App\Enums\PhotographerType;
+use App\Enums\PortfolioImageStatus;
 use App\Enums\ReportRequestedAction;
 use App\Enums\ReportSeverity;
 use App\Enums\ReportStatus;
@@ -45,9 +46,12 @@ use Illuminate\Support\Str;
 
 /**
  * Populates a full demo dataset: clients, photographers (freelancer + studio,
- * across every application status), packages/add-ons/custom-package setups,
- * availability, bookings across every status, payments, reviews, reports,
- * activity logs, profile views, and service search logs.
+ * all approved so they appear on Explore), packages/add-ons/custom-package
+ * setups, availability, bookings across every status, payments, detailed
+ * reviews, reports, activity logs, profile views, and service search logs.
+ *
+ * All 10 photographers are approved with realistic, varied data including
+ * unique bios, styles, services, pricing, packages, and reviews.
  *
  * Only runs in local/testing, same guard as AdminSeeder. Run after
  * AdminSeeder so an administrator exists to attribute admin-side actions to.
@@ -75,6 +79,260 @@ class DemoSeeder extends Seeder
         'photographer with drone', 'affordable wedding package', 'photo and video package',
     ];
 
+    /**
+     * Realistic photographer profiles with varied data for all 10 photographers
+     */
+    private const PHOTOGRAPHER_PROFILES = [
+        // Freelancers (0-5)
+        [
+            'name' => 'CJ Creatives',
+            'bio' => 'Candid photographer specializing in birthdays and intimate events. I love capturing genuine moments without forced poses. 3 years of experience bringing joy to celebrations.',
+            'styles' => ['Candid', 'Documentary'],
+            'services' => ['Birthday', 'Debut', 'Portrait'],
+            'price_min' => 3000,
+            'price_max' => 12000,
+            'years' => 3,
+            'packages' => [
+                ['name' => 'Birthday Party Package', 'price' => 4000, 'items' => ['3 hours coverage', '100 edited photos', 'Online gallery']],
+                ['name' => 'Debut Documentation', 'price' => 8000, 'items' => ['6 hours coverage', '200 edited photos', 'Slideshow video']],
+            ],
+            'addons' => [
+                ['name' => 'Extra Hour', 'price' => 1000],
+                ['name' => 'Print Delivery', 'price' => 500],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'CJ captured my daughter\'s birthday perfectly! Every moment felt so natural and candid. Highly recommend!'],
+                ['rating' => 5, 'comment' => 'Best photographer for candid shots. CJ has a gift for capturing emotion without being intrusive.'],
+                ['rating' => 4, 'comment' => 'Great work! Would have preferred a bit more posed family shots, but overall excellent.'],
+                ['rating' => 5, 'comment' => 'My debut photos are absolutely stunning. CJ was professional and made me feel at ease the entire time.'],
+            ],
+        ],
+        [
+            'name' => 'Joesol Photography',
+            'bio' => 'Professional event photographer with 6+ years in graduations, christenings, and corporate functions. Clean, polished coverage that captures important milestones reliably.',
+            'styles' => ['Traditional', 'Documentary'],
+            'services' => ['Graduation', 'Christening', 'Corporate', 'Event'],
+            'price_min' => 3500,
+            'price_max' => 15000,
+            'years' => 6,
+            'packages' => [
+                ['name' => 'Graduation Package', 'price' => 5000, 'items' => ['4 hours coverage', '150 edited photos', 'Custom album book']],
+                ['name' => 'Corporate Event Package', 'price' => 9000, 'items' => ['8 hours coverage', '300 edited photos', 'Highlights video']],
+                ['name' => 'Christening Coverage', 'price' => 6000, 'items' => ['5 hours coverage', '180 edited photos']],
+            ],
+            'addons' => [
+                ['name' => 'Drone Coverage', 'price' => 3000],
+                ['name' => 'Video Highlights', 'price' => 2500],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Joesol was incredible at our corporate event. Professional, organized, and delivered amazing photos quickly.'],
+                ['rating' => 4, 'comment' => 'Great graduation photos. The edited images were beautiful and delivered on time.'],
+                ['rating' => 5, 'comment' => 'Best photographer we\'ve hired for our christening. Every important moment was captured perfectly.'],
+                ['rating' => 5, 'comment' => 'Reliable, professional, and produces high-quality work. Booking again for next year\'s event!'],
+                ['rating' => 4, 'comment' => 'Good work overall. Minor issue with scheduling but photographer made up for it with quality.'],
+            ],
+        ],
+        [
+            'name' => 'Frederick Robelas',
+            'bio' => 'Fine art photographer creating romantic, editorial-style prenup and portrait sessions. Specializing in natural light and authentic emotion. Building a boutique portfolio since 2024.',
+            'styles' => ['Fine Art', 'Cinematic'],
+            'services' => ['Prenup', 'Portrait', 'Engagement'],
+            'price_min' => 4000,
+            'price_max' => 14000,
+            'years' => 2,
+            'packages' => [
+                ['name' => 'Prenup Session', 'price' => 10000, 'items' => ['4 hours shooting', '250+ raw selections', 'Fine art editing', 'Digital gallery']],
+                ['name' => 'Portrait Session', 'price' => 5000, 'items' => ['2 hours session', '80 edited images', 'Location flexibility']],
+            ],
+            'addons' => [
+                ['name' => 'Cinematic Video Edit', 'price' => 3500],
+                ['name' => 'Additional Location', 'price' => 2000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Frederick created absolute magic with our prenup photos. Every shot is editorial-quality. This is fine art photography!'],
+                ['rating' => 5, 'comment' => 'The artistic vision and editing are exceptional. Worth every peso. Can\'t wait to see our wedding photos!'],
+                ['rating' => 4, 'comment' => 'Beautiful prenup session. Frederick is very artistic and professional. Slightly pricey but the quality justifies it.'],
+                ['rating' => 5, 'comment' => 'My portrait session was like being in a fashion magazine. Frederick knows how to work with natural light.'],
+            ],
+        ],
+        [
+            'name' => 'Aurora Studios',
+            'bio' => 'Specializing in family portraits and newborn photography with a warm, nurturing approach. Creating timeless keepsakes that celebrate life\'s special moments. 4 years of beautiful memories.',
+            'styles' => ['Traditional', 'Fine Art'],
+            'services' => ['Family Portrait', 'Newborn', 'Portrait', 'Children'],
+            'price_min' => 2500,
+            'price_max' => 10000,
+            'years' => 4,
+            'packages' => [
+                ['name' => 'Newborn Bundle', 'price' => 6000, 'items' => ['In-home session', '150 edited photos', '2 digitally created backdrops']],
+                ['name' => 'Family Portrait Session', 'price' => 4000, 'items' => ['2 hours session', '120 edited images', 'Outfit change included']],
+                ['name' => 'Children\'s Portrait', 'price' => 2500, 'items' => ['1 hour session', '60 images', 'One location']],
+            ],
+            'addons' => [
+                ['name' => 'Maternity Session', 'price' => 2000],
+                ['name' => 'Printed Album', 'price' => 2500],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Aurora made my newborn session so comfortable and peaceful. The photos are absolutely gorgeous.'],
+                ['rating' => 5, 'comment' => 'Family photos came out beautifully! Aurora has a gift with making kids smile naturally.'],
+                ['rating' => 4, 'comment' => 'Great newborn photographer. Very patient and professional. Would recommend to all new parents.'],
+                ['rating' => 5, 'comment' => 'My children loved the session and the photos are frame-worthy. Aurora is wonderful!'],
+                ['rating' => 4, 'comment' => 'Beautiful maternity and newborn photos. Slight delay in delivery but quality made up for it.'],
+            ],
+        ],
+        [
+            'name' => 'Lens & Soul',
+            'bio' => 'Wedding and prenup specialist creating romantic, dreamy imagery with personalized shooting plans. Every couple gets a custom vision. 5 years of happily married stories.',
+            'styles' => ['Cinematic', 'Fine Art'],
+            'services' => ['Wedding', 'Prenup', 'Engagement', 'Portrait'],
+            'price_min' => 5000,
+            'price_max' => 18000,
+            'years' => 5,
+            'packages' => [
+                ['name' => 'Bride & Groom Session', 'price' => 12000, 'items' => ['3 hours coverage', '200+ edited photos', 'Highlight video']],
+                ['name' => 'Prenup Essentials', 'price' => 8000, 'items' => ['3 hour shoot', '150 images', 'Custom album']],
+                ['name' => 'Engagement Shoot', 'price' => 5000, 'items' => ['2 hours coverage', '100 edited photos']],
+            ],
+            'addons' => [
+                ['name' => 'Cinematic Same-Day Edit', 'price' => 4000],
+                ['name' => 'Bridal Preparation', 'price' => 2000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Lens & Soul made our prenup magical! The dreamy aesthetic is exactly what we wanted. Outstanding work!'],
+                ['rating' => 5, 'comment' => 'Our wedding photos are breathtaking. The cinematography and editing elevated everything. Highly recommended!'],
+                ['rating' => 5, 'comment' => 'Romantic, artistic, and professional. Lens & Soul truly captured the soul of our love story.'],
+                ['rating' => 4, 'comment' => 'Beautiful engagement photos with a dreamy quality. Minor color grading preference but overall stunning.'],
+            ],
+        ],
+        [
+            'name' => 'Eventscape Photography',
+            'bio' => 'Capturing the essence of corporate events and weddings with an artistic documentary eye. From concept to final gallery, 7 years of excellence delivering unforgettable stories.',
+            'styles' => ['Documentary', 'Fine Art'],
+            'services' => ['Corporate', 'Wedding', 'Event', 'Conference'],
+            'price_min' => 6000,
+            'price_max' => 20000,
+            'years' => 7,
+            'packages' => [
+                ['name' => 'Full Day Wedding', 'price' => 18000, 'items' => ['10 hours coverage', '400+ edited photos', 'Highlight film', 'Album']],
+                ['name' => 'Corporate Event Package', 'price' => 10000, 'items' => ['8 hours coverage', '250 edited photos', 'Slideshow']],
+                ['name' => 'Half Day Event', 'price' => 6000, 'items' => ['5 hours coverage', '150 photos', 'Online gallery']],
+            ],
+            'addons' => [
+                ['name' => 'Event Videography', 'price' => 5000],
+                ['name' => 'Second Shooter', 'price' => 4000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Eventscape perfectly documented our wedding day. The candid moments and artistic composition are incredible.'],
+                ['rating' => 5, 'comment' => 'Corporate event coverage was professional and creative. Captured the energy and important moments perfectly.'],
+                ['rating' => 5, 'comment' => 'Exceptional photographer with 7+ years of experience. It shows in every frame. Highly recommend!'],
+                ['rating' => 4, 'comment' => 'Great work on our conference coverage. Extensive photo library delivered promptly.'],
+            ],
+        ],
+        // Studios (6-9)
+        [
+            'name' => 'HHProduction',
+            'bio' => 'Full-service event photography and videography studio. Team of 5 professionals with 7+ years capturing weddings, debuts, and corporate events with cinematic quality.',
+            'styles' => ['Cinematic', 'Documentary'],
+            'services' => ['Wedding', 'Corporate', 'Videography', 'Debut', 'Event'],
+            'price_min' => 12000,
+            'price_max' => 45000,
+            'years' => 7,
+            'team_size' => 5,
+            'packages' => [
+                ['name' => 'Wedding + Videography Package', 'price' => 35000, 'items' => ['12 hours dual coverage', '500+ edited photos', '4K cinematic video', 'Teaser & full edit']],
+                ['name' => 'Debut Full Service', 'price' => 18000, 'items' => ['8 hours coverage', '300 photos', 'HD video highlights', 'Album']],
+                ['name' => 'Corporate Video Package', 'price' => 15000, 'items' => ['8 hours video', 'Full event coverage', 'Edited highlights', 'Drone shots']],
+            ],
+            'addons' => [
+                ['name' => 'Drone Aerial', 'price' => 3500],
+                ['name' => 'Same-Day Edit', 'price' => 5000],
+                ['name' => 'Additional Videographer', 'price' => 4000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'HHProduction delivered cinema-quality wedding coverage. The team was organized and captured every perfect moment!'],
+                ['rating' => 5, 'comment' => 'Incredible production value! Both photos and video are stunning. Professional team throughout the entire process.'],
+                ['rating' => 5, 'comment' => 'Our corporate event looked amazing thanks to HHProduction. Drone shots added such great perspective!'],
+                ['rating' => 5, 'comment' => 'Best investment for our debut. The 5-person team ensured nothing was missed. Outstanding quality!'],
+            ],
+        ],
+        [
+            'name' => 'KAP Studio',
+            'bio' => 'Boutique photography studio known for clean, fine-art portraiture and elegant wedding coverage. Small team (3 people) means personalized attention on every shoot. 5 years of refined artistry.',
+            'styles' => ['Fine Art', 'Traditional'],
+            'services' => ['Wedding', 'Portrait', 'Debut', 'Family', 'Engagement'],
+            'price_min' => 8000,
+            'price_max' => 30000,
+            'years' => 5,
+            'team_size' => 3,
+            'packages' => [
+                ['name' => 'Intimate Wedding Package', 'price' => 22000, 'items' => ['8 hours coverage', '250+ edited photos', 'Handmade album', 'Engagement session included']],
+                ['name' => 'Fine Art Portrait Session', 'price' => 8000, 'items' => ['3 hour session', '150 images', 'Studio or location', 'Custom backdrop']],
+                ['name' => 'Debut Elegance', 'price' => 14000, 'items' => ['6 hours coverage', '200 images', 'Professional album']],
+            ],
+            'addons' => [
+                ['name' => 'Engagement Session', 'price' => 3500],
+                ['name' => 'Luxury Album', 'price' => 4000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'KAP Studio\'s fine art approach is unlike anything else. Our wedding photos are pure elegance.'],
+                ['rating' => 5, 'comment' => 'The boutique experience makes such a difference. Personalized attention and refined artistry throughout.'],
+                ['rating' => 5, 'comment' => 'My portrait session was elevated and artistic. Each photo feels carefully composed. Highly impressed!'],
+                ['rating' => 4, 'comment' => 'Beautiful debut package and album quality is exceptional. Professional and meticulous work.'],
+            ],
+        ],
+        [
+            'name' => 'Amaras Studio',
+            'bio' => 'Bringing warmth and romance to weddings, prenups, and family portraits. Team of 4 hands-on from concept through delivery. 4 years of creating lasting, emotional memories.',
+            'styles' => ['Traditional', 'Candid'],
+            'services' => ['Wedding', 'Prenup', 'Family', 'Portrait', 'Event'],
+            'price_min' => 9000,
+            'price_max' => 32000,
+            'years' => 4,
+            'team_size' => 4,
+            'packages' => [
+                ['name' => 'Romantic Wedding Package', 'price' => 28000, 'items' => ['10 hours coverage', '350+ photos', 'Candid + posed blend', 'Album & slideshow']],
+                ['name' => 'Prenup Escape', 'price' => 12000, 'items' => ['4 hours outdoor shoot', '200 images', 'Album included']],
+                ['name' => 'Family & Milestone Session', 'price' => 9000, 'items' => ['3 hours session', '150 edited photos', 'Location scout']],
+            ],
+            'addons' => [
+                ['name' => 'Prenup Videography', 'price' => 4500],
+                ['name' => 'Family Album', 'price' => 3000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Amaras captured our wedding day perfectly! The warmth and romance in every shot is exactly what we wanted.'],
+                ['rating' => 5, 'comment' => 'Our prenup photos are absolutely dreamy. The team made us feel so comfortable and the results are stunning.'],
+                ['rating' => 5, 'comment' => 'Family photos that actually look natural and heartfelt. Amaras has a gift for capturing real emotion.'],
+                ['rating' => 4, 'comment' => 'Great experience working with the team. Minor scheduling conflict but resolved quickly and professionally.'],
+            ],
+        ],
+        [
+            'name' => 'Lumina Collective',
+            'bio' => 'Award-winning studio with team of 6 dedicated to bringing your vision to life. Specializing in high-end weddings, corporate events, and editorial shoots. 8+ years of excellence.',
+            'styles' => ['Fine Art', 'Cinematic'],
+            'services' => ['Wedding', 'Corporate', 'Editorial', 'Event', 'Commercial'],
+            'price_min' => 15000,
+            'price_max' => 50000,
+            'years' => 8,
+            'team_size' => 6,
+            'packages' => [
+                ['name' => 'Luxury Wedding Experience', 'price' => 45000, 'items' => ['12 hours dual coverage', '500+ photos', '4K cinema video', 'Premium album', 'Pre-wedding session']],
+                ['name' => 'Corporate Executive Package', 'price' => 20000, 'items' => ['Full day coverage', '300+ photos', 'Event highlights', 'Digital deliverables']],
+                ['name' => 'Editorial & Commercial', 'price' => 25000, 'items' => ['3 day shoot', 'Concept development', '400+ images', 'Professional retouching']],
+            ],
+            'addons' => [
+                ['name' => 'Second Unit/Videography', 'price' => 6000],
+                ['name' => 'Drone + Aerial Cinematography', 'price' => 5500],
+                ['name' => 'Pre-Wedding Travel Session', 'price' => 7000],
+            ],
+            'reviews' => [
+                ['rating' => 5, 'comment' => 'Lumina Collective is the premium choice for weddings. Award-winning quality in every frame. Absolutely worth it!'],
+                ['rating' => 5, 'comment' => 'The 6-person team ensured every moment was captured with multiple angles. Cinematic editing is stunning!'],
+                ['rating' => 5, 'comment' => 'Our corporate event looked like a magazine spread. Professional, creative, and extremely polished.'],
+                ['rating' => 5, 'comment' => 'Luxury service from start to finish. The pre-wedding session addition was an amazing bonus. Best money spent!'],
+            ],
+        ],
+    ];
+
     public function run(): void
     {
         if (! app()->environment(['local', 'testing'])) {
@@ -90,15 +348,16 @@ class DemoSeeder extends Seeder
 
         $this->command->info('Seeding photographers...');
         $photographers = $this->createPhotographers();
-        $approved = $photographers->filter(
-            fn (array $p) => $p['application']->status === PhotographerApplicationStatus::Approved
-        )->values();
+        $approved = $photographers;  // All photographers are now approved
 
         $this->command->info('Seeding favorites...');
         $this->createFavorites($clients, $approved);
 
         $this->command->info('Seeding bookings, payments & reviews...');
         $bookings = $this->createBookings($clients, $approved, $admin);
+
+        $this->command->info('Seeding detailed reviews...');
+        $this->createDetailedReviews($clients, $approved, $bookings);
 
         $this->command->info('Seeding reports...');
         $this->createReports($clients, $approved, $admin, $bookings);
@@ -111,10 +370,9 @@ class DemoSeeder extends Seeder
         $this->createSearchLogs();
 
         $this->command->info(sprintf(
-            'Demo data seeded: %d clients, %d photographers (%d approved), %d bookings.',
+            'Demo data seeded: %d clients, %d photographers (all approved), %d bookings.',
             $clients->count(),
             $photographers->count(),
-            $approved->count(),
             $bookings->count(),
         ));
     }
@@ -138,32 +396,13 @@ class DemoSeeder extends Seeder
     {
         return collect(range(0, self::PHOTOGRAPHER_COUNT - 1))->map(function (int $i) {
             $type = $i < self::FREELANCER_COUNT ? PhotographerType::Freelancer : PhotographerType::Studio;
+            $profile = self::PHOTOGRAPHER_PROFILES[$i] ?? self::PHOTOGRAPHER_PROFILES[0];
+            $name = $profile['name'];
 
-            // Override only the requested demo photographer names.
-            // Indexes 0-5 are freelancers; indexes 6-9 are studios.
-            // Keep the remaining photographers factory-generated.
-            $showcaseNames = [
-                0 => 'CJ Creatives',
-                1 => 'Joesol Photography',
-                2 => 'Frederick Robelas',
-                6 => 'HHProduction',
-                7 => 'KAP Studio',
-                8 => 'Amaras Studio',
-            ];
+            $user = User::factory()->photographer()->create(['name' => $name]);
 
-            $user = User::factory()->photographer()->create(
-                isset($showcaseNames[$i]) ? ['name' => $showcaseNames[$i]] : []
-            );
-
-            // Distribution across the 10 photographers:
-            // - 8 approved (5 freelancers, 3 studios) — fully set up businesses
-            // - 1 pending_review (last freelancer)   — awaiting admin decision
-            // - 1 revision_requested (last studio)    — sent back for fixes
-            $status = match (true) {
-                $i === self::FREELANCER_COUNT - 1 => 'pending_review',
-                $i === self::PHOTOGRAPHER_COUNT - 1 => 'revision_requested',
-                default => 'approved',
-            };
+            // All photographers are approved
+            $status = 'approved';
 
             $applicationFactory = PhotographerApplication::factory()
                 ->state(['user_id' => $user->id, 'photographer_type' => $type]);
@@ -174,57 +413,51 @@ class DemoSeeder extends Seeder
 
             $reviewer = User::where('account_type', AccountType::Administrator)->first();
 
-            $application = match ($status) {
-                'approved' => $applicationFactory->approved()->create(['reviewed_by' => $reviewer?->id]),
-                'pending_review' => $applicationFactory->pendingReview()->create(),
-                'revision_requested' => $applicationFactory->revisionRequested()->create(['reviewed_by' => $reviewer?->id]),
-            };
+            $application = $applicationFactory->approved()->create([
+                'reviewed_by' => $reviewer?->id,
+                'business_name' => $name,
+                'years_active' => $profile['years'],
+                'team_size' => $profile['team_size'] ?? null,
+                'services' => $profile['services'],
+                'price_min' => $profile['price_min'],
+                'price_max' => $profile['price_max'],
+            ]);
 
-            $imagePaths = $status === 'approved'
-                ? $this->seedProfileImages($i, $user->name)
-                : ['profile' => null, 'cover' => null];
+            $imagePaths = $this->seedProfileImages($i, $name);
 
-            $profile = PhotographerProfile::factory()->create([
+            $profilePhoto = PhotographerProfile::factory()->create([
                 'user_id' => $user->id,
-                'bio' => $status === 'approved' ? fake()->paragraph() : null,
-                'style' => $status === 'approved' ? fake()->randomElements(
-                    ['Candid', 'Documentary', 'Fine Art', 'Traditional', 'Cinematic'],
-                    fake()->numberBetween(1, 3)
-                ) : null,
+                'bio' => $profile['bio'],
+                'style' => $profile['styles'],
                 'profile_photo_path' => $imagePaths['profile'],
                 'cover_photo_path' => $imagePaths['cover'],
-                'facebook' => $status === 'approved' ? 'https://facebook.com/'.fake()->userName() : null,
+                'facebook' => 'https://facebook.com/'.Str::slug($name),
+                'instagram' => 'https://instagram.com/'.Str::slug($name),
+                'website' => fake()->boolean(40) ? 'https://'.Str::slug($name).'.test' : null,
             ]);
 
             $packages = collect();
             $addOns = collect();
 
-            if ($status === 'approved') {
-                $this->setupApprovedPhotographerBusiness($user);
-                $packages = Package::where('user_id', $user->id)->get();
-                $addOns = AddOn::where('user_id', $user->id)->get();
-            }
+            $this->setupApprovedPhotographerBusiness($user, $profile);
+            $packages = Package::where('user_id', $user->id)->get();
+            $addOns = AddOn::where('user_id', $user->id)->get();
 
             return [
                 'user' => $user,
                 'application' => $application,
-                'profile' => $profile,
+                'profile' => $profilePhoto,
                 'type' => $type,
                 'packages' => $packages,
                 'add_ons' => $addOns,
+                'profile_data' => $profile,
             ];
         });
     }
 
     /**
      * Generates real placeholder JPEG files on the `public` disk and returns
-     * the paths to store on the profile, instead of writing a fake path that
-     * points to a file which never actually exists on disk (the previous
-     * behavior — every approved photographer's card showed a broken image).
-     *
-     * Files are generated once per (index, name) pair and reused on
-     * subsequent reseeds (checked via Storage::exists) so `migrate:fresh
-     * --seed` doesn't regenerate images it already has.
+     * the paths to store on the profile.
      *
      * @return array{profile: string|null, cover: string|null}
      */
@@ -260,9 +493,6 @@ class DemoSeeder extends Seeder
 
     /**
      * Renders a solid-color JPEG with a centered text label using GD.
-     * No external network calls or bundled image assets required, so this
-     * works offline and never depends on a third-party placeholder service
-     * going down.
      */
     private function generatePlaceholderImage(string $label, int $width, int $height, string $hexColor): string
     {
@@ -273,7 +503,7 @@ class DemoSeeder extends Seeder
         imagefill($image, 0, 0, $background);
 
         $white = imagecolorallocate($image, 255, 255, 255);
-        $font = 5; // largest built-in GD bitmap font, no TTF file needed
+        $font = 5;
         $textWidth = imagefontwidth($font) * strlen($label);
         $textHeight = imagefontheight($font);
         $x = max((int) (($width - $textWidth) / 2), 4);
@@ -288,65 +518,82 @@ class DemoSeeder extends Seeder
         return $contents;
     }
 
-    private function setupApprovedPhotographerBusiness(User $photographer): void
+    /**
+     * Seeds 6-8 real portfolio images with persisting JPEG files on disk.
+     */
+    private function seedPortfolioImages(User $photographer): void
     {
-        // Portfolio: 5-8 images, mostly active, a couple archived.
-        PhotographerPortfolioImage::factory()
-            ->count(fake()->numberBetween(5, 8))
-            ->create(['user_id' => $photographer->id]);
+        if (! extension_loaded('gd')) {
+            $this->command->warn("GD extension not available — skipping portfolio images for \"{$photographer->name}\". Enable php-gd to seed portfolio images.");
+            return;
+        }
+
+        $imageCount = fake()->numberBetween(6, 8);
+        $slug = Str::slug($photographer->name) ?: 'photographer';
+        
+        for ($i = 1; $i <= $imageCount; $i++) {
+            $colorIndex = ($photographer->id + $i) % count(self::AVATAR_COLORS);
+            $color = self::AVATAR_COLORS[$colorIndex];
+            
+            $path = "photographers/seed/{$slug}-{$photographer->id}-portfolio-{$i}.jpg";
+            
+            if (! Storage::disk('public')->exists($path)) {
+                $label = "Photo {$i}";
+                Storage::disk('public')->put($path, $this->generatePlaceholderImage($label, 800, 600, $color));
+            }
+            
+            PhotographerPortfolioImage::firstOrCreate(
+                [
+                    'user_id' => $photographer->id,
+                    'path' => $path,
+                ],
+                [
+                    'status' => PortfolioImageStatus::Active,
+                    'sort_order' => $i,
+                ]
+            );
+        }
+    }
+
+    private function setupApprovedPhotographerBusiness(User $photographer, array $profileData): void
+    {
+        $this->seedPortfolioImages($photographer);
+        
         PhotographerPortfolioImage::factory()
             ->archived()
-            ->count(fake()->numberBetween(0, 2))
+            ->count(fake()->numberBetween(1, 2))
             ->create(['user_id' => $photographer->id]);
 
-        // Packages: 2-4, mostly published, one draft, occasionally one archived.
-        $packageNames = [
-            ['name' => 'Basic Wedding Package', 'price' => 12000, 'included_items' => ['4 hours coverage', '150 edited photos', 'Online gallery']],
-            ['name' => 'Premium Wedding Package', 'price' => 25000, 'included_items' => ['8 hours coverage', '400 edited photos', 'Same-day teaser video', 'Printed album']],
-            ['name' => 'Debut Package', 'price' => 15000, 'included_items' => ['6 hours coverage', '200 edited photos', 'Photobook']],
-            ['name' => 'Corporate Event Package', 'price' => 9000, 'included_items' => ['4 hours coverage', '100 edited photos']],
-        ];
-        $chosen = collect($packageNames)->random(fake()->numberBetween(2, 4));
-        foreach ($chosen as $i => $pkg) {
-            $status = match (true) {
-                $i === 0 => PackageStatus::Draft,
-                default => PackageStatus::Published,
-            };
-
+        // Create photographer-specific packages
+        foreach ($profileData['packages'] as $pkgData) {
             Package::factory()->create([
                 'user_id' => $photographer->id,
-                'name' => $pkg['name'],
-                'included_items' => $pkg['included_items'],
-                'price' => $pkg['price'],
-                'status' => $status,
+                'name' => $pkgData['name'],
+                'included_items' => $pkgData['items'],
+                'price' => $pkgData['price'],
+                'status' => PackageStatus::Published,
             ]);
         }
-        // Occasionally archive an old package too.
+
+        // Occasionally archive an old package
         if (fake()->boolean(30)) {
             Package::factory()->archived()->create([
                 'user_id' => $photographer->id,
-                'name' => 'Old '.fake()->year().' Rate Card',
+                'name' => 'Previous Year Package',
             ]);
         }
 
-        // Add-ons: 1-3.
-        $addOnOptions = [
-            ['name' => 'Extra Hour Coverage', 'price' => 1500],
-            ['name' => 'Drone Shots', 'price' => 2500],
-            ['name' => 'Same-Day Edit Video', 'price' => 5000],
-            ['name' => 'Printed Photobook', 'price' => 3000],
-            ['name' => 'RAW Files', 'price' => 2000],
-        ];
-        foreach (collect($addOnOptions)->random(fake()->numberBetween(1, 3)) as $addOn) {
+        // Create photographer-specific add-ons
+        foreach ($profileData['addons'] as $addonData) {
             AddOn::factory()->create([
                 'user_id' => $photographer->id,
-                'name' => $addOn['name'],
-                'description' => $addOn['name'].' add-on for your booking.',
-                'price' => $addOn['price'],
+                'name' => $addonData['name'],
+                'description' => $addonData['name'].' add-on for your booking.',
+                'price' => $addonData['price'],
             ]);
         }
 
-        // Custom packages: ~60% of approved photographers offer one.
+        // Custom packages: ~60% of photographers offer one
         if (fake()->boolean(60)) {
             CustomPackageConfig::factory()->create([
                 'user_id' => $photographer->id,
@@ -358,23 +605,25 @@ class DemoSeeder extends Seeder
             $this->createCustomPackageComponents($photographer);
         }
 
-        // Availability: ~8 upcoming open windows over the next 30 days.
+        // Availability: ~8 upcoming open windows, wide enough to fit any package
         for ($i = 0; $i < 8; $i++) {
             AvailabilityWindow::factory()->create([
                 'user_id' => $photographer->id,
                 'date' => now()->addDays(fake()->numberBetween(2, 30))->format('Y-m-d'),
+                'start_time' => '06:00',
+                'end_time' => '22:00',
             ]);
         }
 
-        // Blocked dates: 1-2.
+        // Blocked dates
         BlockedDate::factory()->count(fake()->numberBetween(1, 2))->create([
             'user_id' => $photographer->id,
         ]);
 
-        // GCash payout config.
+        // GCash payout config
         PhotographerPaymentConfig::factory()->create(['user_id' => $photographer->id]);
 
-        // Payment references: 3-5, mostly used/available, occasionally invalidated.
+        // Payment references
         $refCount = fake()->numberBetween(3, 5);
         for ($i = 0; $i < $refCount; $i++) {
             $state = fake()->randomElement(['available', 'available', 'used', 'used', 'invalidated']);
@@ -387,7 +636,7 @@ class DemoSeeder extends Seeder
             $factory->create(['photographer_id' => $photographer->id]);
         }
 
-        // Walk-in clients recorded outside the platform: 2-4.
+        // Walk-in clients
         WalkInClient::factory()->count(fake()->numberBetween(2, 4))->create([
             'photographer_id' => $photographer->id,
         ]);
@@ -460,31 +709,40 @@ class DemoSeeder extends Seeder
      */
     private function createBookings(Collection $clients, Collection $approved, ?User $admin): Collection
     {
-        // BookingStatus only has 5 cases: Pending, Confirmed, Completed,
-        // Cancelled, Expired. There's no separate "Accepted" status —
-        // AcceptBookingAction moves Pending straight to Confirmed — and no
-        // "Rejected" status — RejectBookingAction moves Pending to Cancelled
-        // with rejection_reason set. The scenario keys below name the
-        // *situation* being demoed, not a status value, so applyBookingStatus
-        // can map each one to a real, valid status.
-        $plan = [
-            'completed' => 16,
-            'confirmed_paid' => 7,
-            'confirmed_awaiting_payment' => 5, // mirrors AcceptBookingAction: Pending -> Confirmed, nothing else touched
-            'pending' => 6,
-            'cancelled_rejected' => 5, // mirrors RejectBookingAction: Pending -> Cancelled + rejection_reason
-            'cancelled_after_confirm' => 4, // client-initiated cancellation after the booking was confirmed
-            'expired' => 2,
-        ];
-
+        // Ensure each photographer gets at least 3-5 bookings distributed across statuses
         $bookings = collect();
         $eventTypes = ['wedding', 'debut', 'birthday', 'corporate', 'graduation', 'christening'];
         $locationTypes = ['studio', 'client_location', 'outdoor_location', 'other'];
+        $completedBookingIndex = 0;
 
-        foreach ($plan as $status => $count) {
+        // Give each photographer a different number of completed bookings
+        // (4-9) instead of a flat 3 each — this is what drives review-count
+        // and rating variety later in createDetailedReviews().
+        $completedAssignments = [];
+        foreach ($approved->keys() as $idx) {
+            $target = fake()->numberBetween(4, 9);
+            for ($k = 0; $k < $target; $k++) {
+                $completedAssignments[] = $idx;
+            }
+        }
+        shuffle($completedAssignments);
+
+        $bookingPlan = [
+            'completed' => count($completedAssignments),
+            'confirmed_paid' => 10,
+            'confirmed_awaiting_payment' => 7,
+            'pending' => 8,
+            'cancelled_rejected' => 6,
+            'cancelled_after_confirm' => 5,
+            'expired' => 3,
+        ];
+
+        foreach ($bookingPlan as $status => $count) {
             for ($i = 0; $i < $count; $i++) {
                 $client = $clients->random();
-                $photographer = $approved->random();
+                $photographer = $status === 'completed'
+                    ? $approved->get($completedAssignments[$completedBookingIndex++])
+                    : $approved->random();
                 $publishedPackages = $photographer['packages']->where('status', PackageStatus::Published);
                 $package = $publishedPackages->count() > 0 ? $publishedPackages->random() : null;
 
@@ -532,20 +790,13 @@ class DemoSeeder extends Seeder
         $plan = fake()->randomElement([PaymentPlan::Half, PaymentPlan::Full]);
 
         match ($status) {
-            'pending' => null, // stays as created: Pending, hold_expires_at in the future
+            'pending' => null,
 
-            // Mirrors AcceptBookingAction::execute() exactly: only status and
-            // hold_expires_at change. No payment fields, no service_status —
-            // that's the true state right after a photographer clicks Accept.
             'confirmed_awaiting_payment' => $booking->update([
                 'status' => BookingStatus::Confirmed,
                 'hold_expires_at' => null,
             ]),
 
-            // Mirrors RejectBookingAction::execute() exactly: Cancelled +
-            // rejection_reason, nothing else. The UI is expected to tell
-            // these apart from client-initiated cancellations by checking
-            // whether rejection_reason is set.
             'cancelled_rejected' => $booking->update([
                 'status' => BookingStatus::Cancelled,
                 'rejection_reason' => fake()->randomElement([
@@ -562,9 +813,7 @@ class DemoSeeder extends Seeder
             ]),
 
             'cancelled_after_confirm' => $this->applyCancelled($booking, $plan, $admin),
-
             'confirmed_paid' => $this->applyConfirmed($booking, $plan, $admin),
-
             'completed' => $this->applyCompleted($booking, $plan, $admin),
 
             default => null,
@@ -598,16 +847,7 @@ class DemoSeeder extends Seeder
 
     private function applyConfirmed(Booking $booking, PaymentPlan $plan, ?User $admin): void
     {
-        // Most confirmed bookings have at least started payment; a couple sit
-        // at "pending_verification" to demo the admin review queue.
         $verificationQueueCase = fake()->boolean(20);
-
-        // NOTE: migration 2026_09_07_082733_fix_service_status_check_constraint_table
-        // narrowed chk_booking_service_status to ServiceTrackerStatus's real
-        // 3 cases (EventDay/Editing/Delivered). The old 6-value set used here
-        // previously is retired — that mismatch is why every booking after
-        // the first one aborted the seeder before it could reach payments or
-        // reports.
         $serviceStatus = fake()->randomElement([ServiceTrackerStatus::EventDay, ServiceTrackerStatus::Editing]);
 
         $booking->update([
@@ -621,7 +861,6 @@ class DemoSeeder extends Seeder
         if ($verificationQueueCase) {
             $booking->update(['payment_status' => BookingPaymentStatus::PendingVerification]);
             $this->createPaymentsForBooking($booking, $plan, onlyFirstInstallment: true, admin: $admin, firstInstallmentUnmatched: true);
-
             return;
         }
 
@@ -646,30 +885,6 @@ class DemoSeeder extends Seeder
         ]);
 
         $this->createPaymentsForBooking($booking, $plan, onlyFirstInstallment: false, admin: $admin);
-
-        // ~80% of completed bookings get a review.
-        if (fake()->boolean(80)) {
-            $review = Review::factory()->create([
-                'booking_id' => $booking->id,
-                'client_id' => $booking->client_id,
-                'photographer_id' => $booking->photographer_id,
-                'rating' => fake()->randomElement([5, 5, 5, 4, 4, 3, 2]),
-            ]);
-
-            if (fake()->boolean(45)) {
-                $review->update([
-                    'reply' => 'Thank you so much for the kind words — it was a pleasure working with you!',
-                    'replied_at' => now()->subDays(fake()->numberBetween(0, 30)),
-                ]);
-            }
-
-            if (fake()->boolean(8)) {
-                $review->update([
-                    'report_reason' => 'This review references a different booking than the one completed.',
-                    'reported_at' => now()->subDays(fake()->numberBetween(0, 10)),
-                ]);
-            }
-        }
     }
 
     private function createPaymentsForBooking(
@@ -684,8 +899,6 @@ class DemoSeeder extends Seeder
         $paymentDate = $booking->created_at?->format('Y-m-d') ?? now()->format('Y-m-d');
 
         if ($firstInstallmentUnmatched) {
-            // Client submitted a GCash reference that doesn't (yet) match any
-            // reference the photographer recorded — sits in the admin queue.
             Payment::factory()->create([
                 'booking_id' => $booking->id,
                 'client_id' => $booking->client_id,
@@ -725,7 +938,6 @@ class DemoSeeder extends Seeder
             return;
         }
 
-        // Second (onsite) installment for Half-plan bookings that reached full payment.
         $onsiteFactory = Payment::factory()->onsite();
         $onsiteFactory = $admin ? $onsiteFactory->manuallyVerified($admin) : $onsiteFactory;
 
@@ -738,6 +950,87 @@ class DemoSeeder extends Seeder
             'payment_date' => $booking->event_date?->format('Y-m-d') ?? now()->format('Y-m-d'),
             'notes' => 'Remaining balance collected on-site.',
         ]);
+    }
+
+    /**
+     * Seeds detailed, realistic reviews for each photographer with varied ratings and text.
+     * Reviews are created from completed bookings — every completed booking gets one review.
+     * The first few reviews per photographer use the curated, hand-written text from
+     * PHOTOGRAPHER_PROFILES; once that runs out, additional reviews use weighted-random
+     * ratings (mostly 4-5, some 3, occasional 2) with matching template comments, so
+     * review counts and average ratings vary realistically across photographers instead
+     * of every profile showing the same flat "3 reviews, all 5 stars".
+     */
+    private function createDetailedReviews(Collection $clients, Collection $approved, Collection $bookings): void
+    {
+        $extraCommentsByRating = [
+            5 => [
+                'Absolutely worth it — every shot felt intentional and the turnaround was fast.',
+                'They went above and beyond on the day. Couldn\'t have asked for better coverage.',
+                'Communication was great from booking to delivery. Photos speak for themselves.',
+                'Second time booking and just as impressed as the first. Highly recommend.',
+            ],
+            4 => [
+                'Really solid work overall, just a couple of shots I wish were framed differently.',
+                'Good experience, minor delay on delivery but the quality made up for it.',
+                'Happy with the results — professional and easy to coordinate with.',
+                'Great value for the price. Would book again for a smaller event.',
+            ],
+            3 => [
+                'Decent photos but felt a bit rushed during the actual shoot.',
+                'It was okay — some good shots, some I probably wouldn\'t have kept.',
+                'Average experience overall. Communication could have been clearer about the schedule.',
+            ],
+            2 => [
+                'Photos were alright but arrived much later than promised with no update.',
+                'Expected more given the price point. A few unusable shots in the batch.',
+            ],
+        ];
+
+        $replyVariants = [
+            'Thank you so much for trusting us with your event! It was a pleasure working with you.',
+            'We really appreciate you taking the time to share this — thank you for the opportunity!',
+            'So glad you loved the photos! Thanks again for having us.',
+            'Thanks for the honest feedback — we\'re taking this into account for future bookings.',
+            'Appreciate you choosing us for your special day, thank you!',
+        ];
+
+        foreach ($approved as $photographer) {
+            // Get every completed booking for this photographer (count varies
+            // 4-9 per photographer — see createBookings()).
+            $completedBookings = $bookings->filter(
+                fn (Booking $b) => $b->photographer_id === $photographer['user']->id && $b->status === BookingStatus::Completed
+            )->sortBy('id')->values();
+
+            $profileData = $photographer['profile_data'] ?? [];
+            $curatedReviews = $profileData['reviews'] ?? [];
+
+            foreach ($completedBookings as $index => $booking) {
+                if ($index < count($curatedReviews)) {
+                    $rating = $curatedReviews[$index]['rating'];
+                    $comment = $curatedReviews[$index]['comment'];
+                } else {
+                    // Ran out of hand-written text — fall back to a weighted
+                    // random rating with a matching template comment.
+                    $rating = fake()->randomElement([5, 5, 5, 4, 4, 4, 3, 3, 2]);
+                    $comment = fake()->randomElement($extraCommentsByRating[$rating] ?? $extraCommentsByRating[3]);
+                }
+
+                // Guarantee at least one reply per photographer (always reply
+                // to their first review), then a 50/50 chance on the rest.
+                $hasReply = $index === 0 || fake()->boolean(50);
+
+                Review::create([
+                    'booking_id' => $booking->id,
+                    'client_id' => $booking->client_id,
+                    'photographer_id' => $booking->photographer_id,
+                    'rating' => $rating,
+                    'comment' => $comment,
+                    'reply' => $hasReply ? fake()->randomElement($replyVariants) : null,
+                    'replied_at' => $hasReply ? now()->subDays(fake()->numberBetween(1, 30)) : null,
+                ]);
+            }
+        }
     }
 
     /**
@@ -816,24 +1109,13 @@ class DemoSeeder extends Seeder
     {
         foreach ($photographers as $entry) {
             $status = $entry['application']->status;
-            if ($status === PhotographerApplicationStatus::Draft) {
-                continue;
-            }
-
-            [$action, $description] = match ($status) {
-                PhotographerApplicationStatus::Approved => ['application.approved', 'Approved photographer application'],
-                PhotographerApplicationStatus::Rejected => ['application.rejected', 'Rejected photographer application'],
-                PhotographerApplicationStatus::RevisionRequested => ['application.revision_requested', 'Requested revisions on photographer application'],
-                PhotographerApplicationStatus::PendingReview => ['application.submitted', 'Submitted photographer application for review'],
-                default => ['application.updated', 'Updated photographer application'],
-            };
 
             ActivityLog::create([
-                'causer_id' => $status === PhotographerApplicationStatus::PendingReview ? $entry['user']->id : $admin?->id,
+                'causer_id' => $admin?->id,
                 'subject_type' => PhotographerApplication::class,
                 'subject_id' => $entry['application']->id,
-                'action' => $action,
-                'description' => $description,
+                'action' => 'application.approved',
+                'description' => 'Approved photographer application',
                 'metadata' => ['photographer_name' => $entry['user']->name],
                 'created_at' => now()->subDays(fake()->numberBetween(1, 60)),
             ]);
@@ -842,15 +1124,9 @@ class DemoSeeder extends Seeder
         foreach ($bookings as $booking) {
             $status = $booking->status->value;
             if ($status === 'pending') {
-                continue; // no state-change action yet
+                continue;
             }
 
-            // 'accepted'/'rejected' as distinct statuses don't exist on the
-            // real BookingStatus enum — both collapse into 'confirmed' and
-            // 'cancelled' respectively. Use rejection_reason (set only by
-            // RejectBookingAction) to tell a photographer rejection apart
-            // from a client-initiated cancellation within the 'cancelled'
-            // bucket, same signal the frontend would use.
             [$action, $description, $causerId] = match (true) {
                 $status === 'confirmed' => ['booking.confirmed', 'Booking confirmed', $booking->photographer_id],
                 $status === 'completed' => ['booking.completed', 'Service marked as completed', $booking->photographer_id],

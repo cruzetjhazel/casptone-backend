@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Photographer;
 
 use App\Actions\Booking\AcceptBookingAction;
 use App\Actions\Booking\DecideBookingCancellationAction;
+use App\Actions\Booking\DecideBookingRescheduleAction;
 use App\Actions\Booking\RejectBookingAction;
 use App\Enums\CancellationDecision;
 use App\Http\Controllers\Controller;
@@ -63,5 +64,19 @@ class BookingController extends Controller
         $booking = $action->execute($booking, CancellationDecision::Rejected);
 
         return $this->success(new BookingResource($booking), 'Cancellation request rejected.');
+    }
+
+    public function approveReschedule(Booking $booking, DecideBookingRescheduleAction $action)
+    {
+        $this->authorize('decideReschedule', $booking);
+
+        return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Approved)), 'Reschedule approved.');
+    }
+
+    public function rejectReschedule(Booking $booking, DecideBookingRescheduleAction $action)
+    {
+        $this->authorize('decideReschedule', $booking);
+
+        return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Rejected)), 'Reschedule rejected.');
     }
 }

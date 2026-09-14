@@ -3,7 +3,6 @@
 namespace App\Actions\Booking;
 
 use App\Actions\ActivityLog\LogActivityAction;
-use App\Enums\BookingStatus;
 use App\Models\Booking;
 use Illuminate\Validation\ValidationException;
 
@@ -15,9 +14,13 @@ class RequestBookingCancellationAction
 
     public function execute(Booking $booking, string $reason): Booking
     {
-        if (! in_array($booking->status, [BookingStatus::Pending, BookingStatus::Accepted], true)) {
+        // BookingStatus::Accepted does not exist (removed from the enum) —
+        // the previous check referencing it was a fatal error, so
+        // cancellation was broken for every booking. Fixed to the real
+        // rule: Pending, or Confirmed before the event/service has started.
+        if (! $booking->isEligibleForCancellationRequest()) {
             throw ValidationException::withMessages([
-                'status' => ['This booking cannot be cancelled in its current status.'],
+                'status' => ['This booking can no longer be cancelled — the service has already started.'],
             ]);
         }
 
@@ -26,6 +29,7 @@ class RequestBookingCancellationAction
                 'status' => ['A cancellation request is already pending for this booking.'],
             ]);
         }
+
 
         $booking->update([
             'cancellation_reason' => $reason,
@@ -46,5 +50,10 @@ class RequestBookingCancellationAction
         );
 
         return $fresh;
+    }
+
+        public function hasPendingRescheduleRequest(): bool
+    {
+        return $this->reschedule_requested_at !== null && $this->reschedule_decision === null;
     }
 }

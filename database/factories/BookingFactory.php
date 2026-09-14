@@ -79,4 +79,25 @@ class BookingFactory extends Factory
             'hold_expires_at' => null,
         ]);
     }
+    /**
+ * Demo/testing helper: puts a Confirmed, fully-paid booking directly into
+ * any service tracker stage (Upcoming, EventDay, Editing, Delivered).
+ * Not used by production code paths — those always derive service_status
+ * through BookingObserver, RunServiceProgressTransitionsAction, or
+ * UpdateServiceTrackerStatusAction. This just lets seeders/tests skip
+ * straight to a stage instead of replaying the whole lifecycle.
+ */
+public function withServiceStatus(ServiceTrackerStatus $status): static
+{
+    return $this->state(fn () => [
+        'status' => BookingStatus::Confirmed,
+        'payment_plan' => PaymentPlan::Full,
+        'payment_status' => BookingPaymentStatus::FullyPaid,
+        'service_status' => $status,
+        'service_status_updated_at' => now(),
+    ]);
+}
+
+
+
 }

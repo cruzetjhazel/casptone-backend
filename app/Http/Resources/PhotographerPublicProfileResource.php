@@ -24,6 +24,21 @@ class PhotographerPublicProfileResource extends JsonResource
             'id' => $this->id,
             'favorites_count' => (int) ($this->favorites_count ?? 0),
             'bookings_count' => (int) ($this->bookings_count ?? 0),
+            'average_rating' => $this->reviews_avg_rating !== null ? round((float) $this->reviews_avg_rating, 1) : null,
+            'reviews_count' => (int) ($this->reviews_count ?? 0),
+            'reviews' => $this->whenLoaded('reviews', fn () => $this->reviews
+                ->sortByDesc('created_at')
+                ->map(fn ($review) => [
+                    'id' => $review->id,
+                    'client_name' => $review->client?->name,
+                    'rating' => $review->rating,
+                    'comment' => $review->comment,
+                    'reply' => $review->reply,
+                    'replied_at' => $review->replied_at,
+                    'created_at' => $review->created_at,
+                ])
+                ->values()
+            ),
             'joined_at' => $application?->reviewed_at ?? $this->created_at,
             'is_bookable' => app(\App\Services\Photographer\BookabilityService::class)->isBookable($this->resource),
             'photographer_type' => $application?->photographer_type?->value,

@@ -39,7 +39,6 @@ class ClientController extends Controller
                 $hasActiveBooking = $clientBookings->contains(
                     fn ($booking) => in_array($booking->status, [
                         BookingStatus::Pending,
-                        BookingStatus::Accepted,
                         BookingStatus::Confirmed,
                     ], true)
                 );
@@ -136,14 +135,3 @@ class ClientController extends Controller
         return response()->json(['message' => 'Walk-in client permanently deleted.']);
     }
 }
-
-// --- Route additions needed in api.php, in the same `photographer` group as
-//     the existing `clients/{walkInClient}/archive` route ---
-//
-// Route::post('clients/{walkInClient}/restore', [ClientController::class, 'restore']);
-// Route::delete('clients/{walkInClient}', [ClientController::class, 'destroy']);
-
-// --- WalkInClientResource.php ALSO needs `archived_at` added to its toArray():
-//     'archived_at' => $this->archived_at,
-//     I don't have this file's current content — add that one line manually,
-//     or send me the file and I'll return it patched.

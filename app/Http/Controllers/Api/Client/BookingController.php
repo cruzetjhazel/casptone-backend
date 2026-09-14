@@ -4,9 +4,17 @@ namespace App\Http\Controllers\Api\Client;
 
 use App\Actions\Booking\CreateBookingAction;
 use App\Actions\Booking\RequestBookingCancellationAction;
+use App\Actions\Booking\RequestBookingModificationAction;
+use App\Actions\Booking\RequestBookingRescheduleAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateBookingRequest;
 use App\Http\Requests\RequestBookingCancellationRequest;
+use App\Http\Requests\RequestBookingModificationRequest;
+use App\Http\Requests\RequestBookingRescheduleRequest;
+use App\Actions\Booking\ModifyBookingDetailsAction;
+use App\Actions\Booking\RescheduleBookingAction;
+use App\Http\Requests\ModifyBookingDetailsRequest;
+use App\Http\Requests\RescheduleBookingRequest;
 use App\Http\Resources\BookingResource;
 use App\Models\Booking;
 use App\Traits\ApiResponses;
@@ -46,5 +54,23 @@ class BookingController extends Controller
         $booking = $action->execute($booking, $request->validated('reason'));
 
         return $this->success(new BookingResource($booking), 'Cancellation requested.');
+    }
+
+    public function requestReschedule(RequestBookingRescheduleRequest $request, Booking $booking, RequestBookingRescheduleAction $action)
+    {
+        $this->authorize('requestReschedule', $booking);
+
+        $booking = $action->execute($booking, $request->validated('event_date'), $request->validated('start_time'), $request->validated('reason'));
+
+        return $this->success(new BookingResource($booking), 'Reschedule requested.');
+    }
+
+    public function requestModification(RequestBookingModificationRequest $request, Booking $booking, RequestBookingModificationAction $action)
+    {
+        $this->authorize('modify', $booking);
+
+        $booking = $action->execute($booking, $request->validated('type'), $request->validated('reason'));
+
+        return $this->success(new BookingResource($booking), 'Modification request submitted.');
     }
 }

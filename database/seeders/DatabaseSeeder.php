@@ -25,5 +25,7 @@ class DatabaseSeeder extends Seeder
         // notes) to whichever administrator it creates/normalizes.
         $this->call(AdminSeeder::class);
         $this->call(DemoSeeder::class);
+        $this->call(ServiceTrackerShowcaseSeeder::class); 
+        $this->call(TestClientSeeder::class);
     }
 }

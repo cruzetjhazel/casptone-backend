@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Enums\AccountStatus;
 use App\Enums\AccountType;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -168,7 +169,6 @@ class User extends Authenticatable
         return $this->bookingsAsClient()
             ->whereIn('status', [
                 \App\Enums\BookingStatus::Pending,
-                \App\Enums\BookingStatus::Accepted,
                 \App\Enums\BookingStatus::Confirmed,
             ])
             ->exists();
@@ -178,9 +178,19 @@ class User extends Authenticatable
     {
         return $this->hasMany(\App\Models\WalkInClient::class, 'photographer_id');
     }
+
+    public function reviews(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Review::class, 'photographer_id');
+    }
+
     public function activityLogs()
     {
         return $this->hasMany(ActivityLog::class)->latest();
+    }
+    public function bookingHours(): HasMany
+    {
+        return $this->hasMany(BookingHour::class);
     }
     
 }
