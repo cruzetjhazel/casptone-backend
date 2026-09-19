@@ -21,6 +21,7 @@ class RegisterPhotographerRequest extends FormRequest
             'phone_number' => ['required', 'string', 'max:20'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'photographer_type' => ['required', Rule::in(['freelancer', 'studio'])],
+            'terms_accepted' => ['required', 'accepted'],
         ];
     }
 }

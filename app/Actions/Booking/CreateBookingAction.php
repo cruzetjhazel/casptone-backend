@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Photographer\AvailabilityService;
 use App\Services\Photographer\BookabilityService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CreateBookingAction
@@ -34,9 +35,10 @@ class CreateBookingAction
         }
 
         $isCustom = (bool) ($data['is_custom_package'] ?? false);
+        $customHours = null;
 
         if ($isCustom) {
-            [$neededMinutes, $subtotal, $packageId, $packageSnapshot, $customSnapshot] = $this->resolveCustomPackage($photographer, $data);
+            [$neededMinutes, $subtotal, $packageId, $packageSnapshot, $customSnapshot, $customHours] = $this->resolveCustomPackage($photographer, $data);
         } else {
             [$neededMinutes, $subtotal, $packageId, $packageSnapshot, $customSnapshot] = $this->resolveFixedPackage($photographer, $data);
         }
@@ -44,34 +46,69 @@ class CreateBookingAction
         [$addOnsSnapshot, $addOnsTotal] = $this->resolveAddOns($photographer, $data['add_on_ids'] ?? []);
         $subtotal += $addOnsTotal;
 
+        $platformFee = (float) config('platform.fee', 30.00);
+        $totalPrice = $subtotal + $platformFee;
+
         $this->assertSlotIsAvailable($photographer, $data['event_date'], $data['start_time'], $neededMinutes);
 
         $endTime = Carbon::parse($data['start_time'])->addMinutes($neededMinutes)->format('H:i');
 
-        $this->assertNoConflict($photographer, $data['event_date'], $data['start_time'], $endTime);
+        // Business rule (revised): a slot is only ever truly "taken" once a
+        // booking for it has a CONFIRMED payment (partially or fully paid).
+        // Multiple clients are allowed to request — and even be accepted
+        // for — the same overlapping slot at the same time; this lets a
+        // photographer keep a backup request alive in case the first client
+        // never pays or cancels. Whichever booking gets its payment
+        // confirmed first wins the slot; see ReleaseConflictingBookingsAction,
+        // which auto-declines the other unpaid requests for that slot at
+        // that point. We only need to guard against *paid* conflicts here.
+        //
+        // The check-then-insert below is wrapped in a transaction with a
+        // row lock on the photographer so two clients paying/requesting at
+        // the exact same instant can't both slip past assertNoConflict()
+        // before either row commits (the race condition this replaced).
+        $booking = DB::transaction(function () use (
+            $client, $photographer, $packageId, $isCustom, $packageSnapshot,
+            $customSnapshot, $customHours, $addOnsSnapshot, $data, $subtotal,
+            $platformFee, $totalPrice, $endTime
+        ) {
+            $photographer = User::where('id', $photographer->id)->lockForUpdate()->firstOrFail();
 
-        $booking = Booking::create([
-            'client_id' => $client->id,
-            'photographer_id' => $photographer->id,
-            'package_id' => $packageId,
-            'is_custom_package' => $isCustom,
-            'package_snapshot' => $packageSnapshot,
-            'custom_package_snapshot' => $customSnapshot,
-            'add_ons_snapshot' => $addOnsSnapshot,
-            'event_type' => $data['event_type'],
-            'custom_event_type' => $data['custom_event_type'] ?? null,
-            'event_date' => $data['event_date'],
-            'start_time' => $data['start_time'],
-            'end_time' => $endTime,
-            'location_type' => $data['location_type'],
-            'event_address' => $data['event_address'] ?? null,
-            'guest_count' => $data['guest_count'] ?? null,
-            'special_requests' => $data['special_requests'] ?? null,
-            'subtotal' => $subtotal,
-            'total_price' => $subtotal,
-            'status' => BookingStatus::Pending,
-            'hold_expires_at' => now()->addHours(24),
-        ]);
+            $this->assertNoConflict($photographer, $data['event_date'], $data['start_time'], $endTime);
+
+            return Booking::create([
+                'client_id' => $client->id,
+                'photographer_id' => $photographer->id,
+                'package_id' => $packageId,
+                'is_custom_package' => $isCustom,
+                'package_snapshot' => $packageSnapshot,
+                'custom_package_snapshot' => $customSnapshot,
+                'custom_hours' => $customHours,
+                'add_ons_snapshot' => $addOnsSnapshot,
+                'event_type' => $data['event_type'],
+                'custom_event_type' => $data['custom_event_type'] ?? null,
+                'event_date' => $data['event_date'],
+                'start_time' => $data['start_time'],
+                'end_time' => $endTime,
+                'location_type' => $data['location_type'],
+                'province_id' => $data['province_id'] ?? null,
+                'city_municipality_id' => $data['city_municipality_id'] ?? null,
+                'barangay_id' => $data['barangay_id'] ?? null,
+                'event_address' => $data['event_address'] ?? null,
+                'guest_count' => $data['guest_count'] ?? null,
+                'special_requests' => $data['special_requests'] ?? null,
+                'subtotal' => $subtotal,
+                'platform_fee' => $platformFee,
+                'total_price' => $totalPrice,
+                'status' => BookingStatus::Pending,
+                // 48 hours for the photographer to accept/reject before the
+                // request auto-expires (see ExpireStaleBookingHoldsAction) —
+                // long enough for a small/solo operator to reasonably check
+                // their phone, short enough that a client isn't left hanging
+                // for the client to reasonably check on their phone.
+                'hold_expires_at' => now()->addHours(48),
+            ]);
+        });
 
         $photographer->notify(new \App\Notifications\Booking\NewBookingRequestNotification($booking));
         $client->notify(new \App\Notifications\Booking\BookingRequestSubmittedNotification($booking));
@@ -131,6 +168,48 @@ class CreateBookingAction
             ]);
         }
 
+        $bufferMinutes = (int) ($config->buffer_minutes ?? 0);
+
+        // Sliding-hours pricing mode: the photographer set an hourly_rate
+        // (and optionally min/max hours) on their custom package config,
+        // and the client dragged the frontend slider to pick a coverage
+        // length instead of choosing a discrete duration option. Coverage
+        // duration and price both scale directly off the client's chosen
+        // hours here, so there's no separate duration-component requirement
+        // to check — every other (non-duration) component still applies as
+        // a flat add-on on top.
+        if ($config->hourly_rate !== null && array_key_exists('custom_hours', $data) && $data['custom_hours'] !== null) {
+            $minHours = $config->min_hours ?? 1;
+            $maxHours = $config->max_hours ?? 12;
+            $hours = (int) $data['custom_hours'];
+
+            if ($hours < $minHours || $hours > $maxHours) {
+                throw ValidationException::withMessages([
+                    'custom_hours' => ["Coverage hours must be between {$minHours} and {$maxHours} for this photographer."],
+                ]);
+            }
+
+            $flatComponents = $components->filter(fn ($c) => $c->duration_minutes === null);
+            $subtotal = (float) ($config->base_fee ?? 0)
+                + ((float) $config->hourly_rate * $hours)
+                + (float) $flatComponents->sum('price_addition');
+
+            $snapshot = [
+                'base_fee' => (string) ($config->base_fee ?? 0),
+                'hourly_rate' => (string) $config->hourly_rate,
+                'hours' => $hours,
+                'duration_minutes' => $hours * 60,
+                'buffer_minutes' => $bufferMinutes,
+                'components' => $flatComponents->map(fn ($c) => [
+                    'label' => $c->label,
+                    'type' => $c->type->value,
+                    'price_addition' => (string) $c->price_addition,
+                ])->values()->toArray(),
+            ];
+
+            return [$hours * 60 + $bufferMinutes, $subtotal, null, null, $snapshot, $hours];
+        }
+
         $subtotal = (float) ($config->base_fee ?? 0) + (float) $components->sum('price_addition');
 
         // The client must have selected EXACTLY ONE component carrying a real
@@ -162,8 +241,6 @@ class CreateBookingAction
 
         $durationComponent = $durationComponents->first();
 
-        $bufferMinutes = (int) ($config->buffer_minutes ?? 0);
-
         $snapshot = [
             'base_fee' => (string) ($config->base_fee ?? 0),
             'duration_minutes' => $durationComponent->duration_minutes,
@@ -175,7 +252,7 @@ class CreateBookingAction
             ])->values()->toArray(),
         ];
 
-        return [$durationComponent->duration_minutes + $bufferMinutes, $subtotal, null, null, $snapshot];
+        return [$durationComponent->duration_minutes + $bufferMinutes, $subtotal, null, null, $snapshot, null];
     }
 
     protected function resolveAddOns(User $photographer, array $addOnIds): array
@@ -208,18 +285,31 @@ class CreateBookingAction
         }
     }
 
+    /**
+     * Only blocks against bookings whose payment is actually confirmed
+     * (partially or fully paid). Pending requests and accepted-but-unpaid
+     * bookings do NOT block a new request for the same slot — if the other
+     * client cancels or never pays, this slot was never truly unavailable.
+     * Call this from inside a transaction with the photographer row locked
+     * (see CreateBookingAction::execute and the payment-confirmation
+     * actions) so the check is atomic with whatever write follows it.
+     */
     protected function assertNoConflict(User $photographer, string $date, string $start, string $end): void
     {
         $conflict = $photographer->bookingsAsPhotographer()
             ->where('event_date', $date)
-            ->whereIn('status', [\App\Enums\BookingStatus::Pending, \App\Enums\BookingStatus::Confirmed])
+            ->where('status', \App\Enums\BookingStatus::Confirmed)
+            ->whereIn('payment_status', [
+                \App\Enums\BookingPaymentStatus::PartiallyPaid,
+                \App\Enums\BookingPaymentStatus::FullyPaid,
+            ])
             ->where('start_time', '<', $end)
             ->where('end_time', '>', $start)
             ->exists();
 
         if ($conflict) {
             throw ValidationException::withMessages([
-                'start_time' => ['This time conflicts with another booking request for this photographer.'],
+                'start_time' => ['This time slot is already booked and paid for.'],
             ]);
         }
     }

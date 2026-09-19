@@ -22,6 +22,7 @@ class User extends Authenticatable
         'password',
         'account_type',
         'account_status',
+        'terms_accepted_at',
     ];
 
     protected $hidden = [
@@ -36,6 +37,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'account_type' => AccountType::class,
             'account_status' => AccountStatus::class,
+            'terms_accepted_at' => 'datetime',
         ];
     }
 

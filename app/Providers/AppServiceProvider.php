@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Models\Booking;
 use App\Observers\BookingObserver;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -39,6 +42,21 @@ class AppServiceProvider extends ServiceProvider
             $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:8080'), '/');
 
             return "{$frontendUrl}/reset-password?token={$token}&email=" . urlencode($notifiable->getEmailForPasswordReset());
+        });
+
+        // Brute-force / credential-stuffing protection for auth endpoints
+        // (login, register, forgot-password) — none of these had any rate
+        // limiting before. Keyed by IP + submitted email so one attacker
+        // can't lock out a real user's email by hammering it from many IPs
+        // while still being generous enough for normal typos. Applied via
+        // throttle:auth on the routes themselves (see routes/api.php).
+        RateLimiter::for('auth', function (Request $request) {
+            $emailKey = strtolower((string) $request->input('email', ''));
+
+            return [
+                Limit::perMinute(5)->by($request->ip().'|'.$emailKey),
+                Limit::perMinute(20)->by($request->ip()),
+            ];
         });
     }
 }

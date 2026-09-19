@@ -12,6 +12,9 @@ use App\Enums\PhotographerPaymentReferenceStatus;
 use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\PhotographerPaymentReference;
+use App\Models\User;
+use App\Services\Booking\SlotConflictService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -23,8 +26,10 @@ use Illuminate\Validation\ValidationException;
  */
 class SubmitPaymentAction
 {
-    public function __construct(protected LogActivityAction $activityLogger)
-    {
+    public function __construct(
+        protected LogActivityAction $activityLogger,
+        protected SlotConflictService $slotConflictService,
+    ) {
     }
 
     public function execute(Booking $booking, array $data): Payment
@@ -47,6 +52,26 @@ class SubmitPaymentAction
         if (round((float) $data['amount'], 2) !== round($expectedAmount, 2)) {
             throw ValidationException::withMessages([
                 'amount' => ["The amount paid must match the {$plan->value} payment amount of ".number_format($expectedAmount, 2).'.'],
+            ]);
+        }
+
+        // Duplicate-reference protection: the DB's unique constraint on
+        // reference_number was intentionally dropped (retries/typo
+        // corrections need to be resubmittable), so this is now the only
+        // guard against the same GCash reference number being used to pay
+        // for two different bookings. We only block it once it has actually
+        // succeeded elsewhere (Matched or ManuallyVerified) — a reference
+        // that's merely NotMatched/Rejected on another booking might be a
+        // legitimate retry after a typo and shouldn't be blocked here.
+        $alreadyUsedElsewhere = Payment::where('photographer_id', $booking->photographer_id)
+            ->where('reference_number', $data['reference_number'])
+            ->where('booking_id', '!=', $booking->id)
+            ->whereIn('matching_status', [PaymentMatchingStatus::Matched, PaymentMatchingStatus::ManuallyVerified])
+            ->exists();
+
+        if ($alreadyUsedElsewhere) {
+            throw ValidationException::withMessages([
+                'reference_number' => ['This GCash reference number has already been used to pay for a different booking.'],
             ]);
         }
 
@@ -74,17 +99,50 @@ class SubmitPaymentAction
             'matching_status' => $matched ? PaymentMatchingStatus::Matched : PaymentMatchingStatus::NotMatched,
         ]);
 
+        // Confirming payment is what actually "claims" the slot (see
+        // SlotConflictService), so this step must be atomic: lock the
+        // photographer row, re-check no rival booking already won this
+        // slot, then confirm and release the rivals — all inside one
+        // transaction so two near-simultaneous payments can't both win.
+        // In the rare case a rival booking somehow already won the slot
+        // (both clients paid within the same instant), we don't leave this
+        // payment in limbo — it falls back to manual review instead.
+        $lostRaceToRival = false;
+
         if ($matched) {
-            $match->update(['status' => PhotographerPaymentReferenceStatus::Used]);
+            try {
+                DB::transaction(function () use ($booking, $match, $plan) {
+                    User::where('id', $booking->photographer_id)->lockForUpdate()->firstOrFail();
 
-            $booking->update([
-                'payment_plan' => $plan,
-                'payment_status' => $plan === PaymentPlan::Full
-                    ? BookingPaymentStatus::FullyPaid
-                    : BookingPaymentStatus::PartiallyPaid,
-                'status' => BookingStatus::Confirmed,
-            ]);
+                    $this->slotConflictService->assertNoPaidConflict($booking);
 
+                    $match->update(['status' => PhotographerPaymentReferenceStatus::Used]);
+
+                    $booking->update([
+                        'payment_plan' => $plan,
+                        'payment_status' => $plan === PaymentPlan::Full
+                            ? BookingPaymentStatus::FullyPaid
+                            : BookingPaymentStatus::PartiallyPaid,
+                        'status' => BookingStatus::Confirmed,
+                    ]);
+
+                    $this->slotConflictService->releaseConflictingBookings($booking->fresh());
+                });
+            } catch (ValidationException $e) {
+                $lostRaceToRival = true;
+                // Roll the payment record back to an honest "not matched"
+                // state — the match was never actually applied (the
+                // transaction above threw before committing), so don't
+                // leave the payment claiming a match that didn't happen.
+                $payment->update([
+                    'matching_status' => PaymentMatchingStatus::NotMatched,
+                    'photographer_payment_reference_id' => null,
+                    'verification_notes' => 'Auto-match reversed: another client\'s payment for this same slot was confirmed first. Needs manual review.',
+                ]);
+            }
+        }
+
+        if ($matched && ! $lostRaceToRival) {
             $freshBooking = $booking->fresh();
             $freshPayment = $payment->fresh();
 

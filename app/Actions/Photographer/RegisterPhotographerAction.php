@@ -21,6 +21,7 @@ class RegisterPhotographerAction
                 'password' => $data['password'],
                 'account_type' => AccountType::Photographer,
                 'account_status' => AccountStatus::Active,
+                'terms_accepted_at' => now(),
             ]);
 
             PhotographerApplication::create([

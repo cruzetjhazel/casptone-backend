@@ -16,7 +16,14 @@ class PublicPhotographerCustomPackageController extends Controller
 
     public function show(User $user)
     {
-        if (! $user->isPhotographer() || ! $user->isApprovedPhotographer()) {
+        // Same rule as PublicPhotographerController::show() — a suspended
+        // photographer must not be bookable via this endpoint either, even
+        // if their profile ID/URL is known. Keep these two checks in sync.
+        if (
+            ! $user->isPhotographer()
+            || ! $user->isApprovedPhotographer()
+            || $user->account_status !== \App\Enums\AccountStatus::Active
+        ) {
             throw new NotFoundHttpException('Photographer not found.');
         }
 

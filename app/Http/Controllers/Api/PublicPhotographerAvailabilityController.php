@@ -101,7 +101,7 @@ class PublicPhotographerAvailabilityController extends Controller
 
     protected function guardPublicAccess(User $user): void
     {
-        if (! $user->isPhotographer() || ! $user->isApprovedPhotographer()) {
+    if (! $user->isPhotographer() || ! $user->isApprovedPhotographer() || $user->account_status !== \App\Enums\AccountStatus::Active) {
             throw new NotFoundHttpException('Photographer not found.');
         }
     }

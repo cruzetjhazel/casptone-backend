@@ -17,3 +17,9 @@ Schedule::call(fn () => app(ExpireStaleBookingHoldsAction::class)->execute())
     ->name('expire-stale-booking-holds')
     ->withoutOverlapping();
 
+// Now that config/sanctum.php sets a real token expiration, this clears out
+// the expired rows instead of letting personal_access_tokens grow forever.
+// Sanctum already rejects expired tokens on every request regardless of
+// pruning — this is just housekeeping, not itself a security control.
+Schedule::command('sanctum:prune-expired --hours=24')->daily();
+

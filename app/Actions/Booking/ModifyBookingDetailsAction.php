@@ -21,7 +21,8 @@ class ModifyBookingDetailsAction
         }
 
         $booking->update(array_intersect_key($data, array_flip([
-            'location_type', 'event_address', 'guest_count', 'special_requests',
+            'location_type', 'province_id', 'city_municipality_id', 'barangay_id',
+            'event_address', 'guest_count', 'special_requests',
         ])));
 
         $fresh = $booking->fresh();

@@ -15,7 +15,7 @@ class PublicPhotographerPackageController extends Controller
 
     public function index(User $user)
     {
-        if (! $user->isPhotographer() || ! $user->isApprovedPhotographer()) {
+    if (! $user->isPhotographer() || ! $user->isApprovedPhotographer() || $user->account_status !== \App\Enums\AccountStatus::Active) {
             throw new NotFoundHttpException('Photographer not found.');
         }
 

@@ -17,6 +17,7 @@ class RegisterClientAction
             'password' => $data['password'],
             'account_type' => AccountType::Client,
             'account_status' => AccountStatus::Active,
+            'terms_accepted_at' => now(),
         ]);
     }
 }

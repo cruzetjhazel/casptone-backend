@@ -55,7 +55,16 @@ class PublicPhotographerController extends Controller
 
     public function show(Request $request, User $user)
     {
-        if (! $user->isPhotographer() || ! $user->isApprovedPhotographer()) {
+        // A suspended/deactivated photographer must 404 here exactly like an
+        // unapproved one — otherwise their profile stays reachable by direct
+        // URL even though index()/featured() correctly hide them (both are
+        // filtered through BookabilityService::isBookable(), which also
+        // checks account_status). Do not drop this check again.
+        if (
+            ! $user->isPhotographer()
+            || ! $user->isApprovedPhotographer()
+            || $user->account_status !== \App\Enums\AccountStatus::Active
+        ) {
             throw new NotFoundHttpException('Photographer profile not found.');
         }
 

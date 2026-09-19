@@ -20,6 +20,7 @@ class RegisterClientRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'phone_number' => ['required', 'string', 'max:20'],
             'password' => ['required', 'confirmed', Password::defaults()],
+            'terms_accepted' => ['required', 'accepted'],
         ];
     }
 }

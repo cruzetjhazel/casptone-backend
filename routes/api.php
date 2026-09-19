@@ -41,18 +41,25 @@ use App\Http\Controllers\Api\PublicPhotographerCustomPackageController;
 use App\Http\Controllers\Api\Photographer\AnalyticsController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\ServiceSearchLogController;
+use App\Http\Controllers\Api\LocationController;
 
 Route::prefix('auth')->group(function () {
-    Route::post('register-client', [AuthController::class, 'register']);
-    Route::post('login', [AuthController::class, 'login']);
+    Route::middleware('throttle:auth')->group(function () {
+        Route::post('register-client', [AuthController::class, 'register']);
+        Route::post('login', [AuthController::class, 'login']);
+    });
 
+    // Already gated by a valid Sanctum token — no brute-force risk here,
+    // so these stay on the default rate limit rather than the strict
+    // per-email "auth" one (which would otherwise lump every user behind
+    // a shared/office IP into one 5-per-minute bucket).
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::get('me', [AuthController::class, 'me']);
     });
 });
 
-Route::post('auth/register-photographer', [AuthController::class, 'registerPhotographer']);
+Route::post('auth/register-photographer', [AuthController::class, 'registerPhotographer'])->middleware('throttle:auth');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('photographer')->group(function () {
@@ -73,8 +80,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-Route::post('auth/forgot-password', [PasswordResetController::class, 'forgotPassword']);
-Route::post('auth/reset-password', [PasswordResetController::class, 'resetPassword']);
+Route::post('auth/forgot-password', [PasswordResetController::class, 'forgotPassword'])->middleware('throttle:auth');
+Route::post('auth/reset-password', [PasswordResetController::class, 'resetPassword'])->middleware('throttle:auth');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('client')->group(function () {
@@ -94,6 +101,10 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::get('photographers', [PublicPhotographerController::class, 'index']);
 Route::get('photographers/featured', [PublicPhotographerController::class, 'featured']);
 Route::get('photographers/{user}', [PublicPhotographerController::class, 'show']);
+
+Route::get('locations/provinces', [LocationController::class, 'provinces']);
+Route::get('locations/cities-municipalities', [LocationController::class, 'citiesMunicipalities']);
+Route::get('locations/barangays', [LocationController::class, 'barangays']);
 
 Route::post('search-logs', [ServiceSearchLogController::class, 'store']);
 Route::get('search-logs/popular', [ServiceSearchLogController::class, 'popular']);
@@ -211,6 +222,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('admin/payments', [AdminPaymentController::class, 'index']);
+    Route::post('admin/payments/{payment}/refund', [AdminPaymentController::class, 'refund']);
     Route::get('admin/bookings', [AdminBookingController::class, 'index']);
     Route::get('admin/bookings/{booking}', [AdminBookingController::class, 'show']);
     Route::post('admin/bookings/{booking}/cancel', [AdminBookingController::class, 'cancel']);

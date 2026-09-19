@@ -28,7 +28,8 @@ class Booking extends Model
         'client_id', 'photographer_id', 'package_id',
         'is_custom_package', 'package_snapshot', 'custom_package_snapshot', 'add_ons_snapshot',
         'event_type', 'custom_event_type', 'event_date', 'start_time', 'end_time',
-        'location_type', 'event_address', 'guest_count', 'special_requests',
+        'location_type', 'province_id', 'city_municipality_id', 'barangay_id',
+        'event_address', 'guest_count', 'special_requests',
         'subtotal', 'total_price', 'status', 'hold_expires_at',
         'rejection_reason', 'cancellation_reason', 'cancellation_requested_at',
         'cancellation_decision', 'cancellation_decided_at',
@@ -82,6 +83,21 @@ class Booking extends Model
     public function package(): BelongsTo
     {
         return $this->belongsTo(Package::class);
+    }
+
+    public function province(): BelongsTo
+    {
+        return $this->belongsTo(LocationProvince::class, 'province_id');
+    }
+
+    public function cityMunicipality(): BelongsTo
+    {
+        return $this->belongsTo(LocationCityMunicipality::class, 'city_municipality_id');
+    }
+
+    public function barangay(): BelongsTo
+    {
+        return $this->belongsTo(LocationBarangay::class, 'barangay_id');
     }
 
     public function payments(): HasMany

@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(BicolPsgcSeeder::class);
         User::firstOrCreate(
             ['email' => 'test@example.com'],
             User::factory()->raw(['name' => 'Test User'])
