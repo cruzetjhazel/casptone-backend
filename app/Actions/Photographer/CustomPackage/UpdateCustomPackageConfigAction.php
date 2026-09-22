@@ -14,8 +14,8 @@ class UpdateCustomPackageConfigAction
         // Falling back to 0 whenever buffer_minutes is omitted would silently
         // wipe out an already-configured buffer on every unrelated save, so we
         // fall back to whatever is already stored instead.
-        $existingBuffer = $user->customPackageConfig?->buffer_minutes ?? 0;
-        $existing = $user->customPackageConfig;
+        $existing = \App\Models\CustomPackageConfig::where('user_id', $user->id)->first();
+        $existingBuffer = $existing?->buffer_minutes ?? 0;
 
         return CustomPackageConfig::updateOrCreate(
             ['user_id' => $user->id],

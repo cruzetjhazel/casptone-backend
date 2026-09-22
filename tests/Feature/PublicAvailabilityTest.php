@@ -62,11 +62,21 @@ class PublicAvailabilityTest extends TestCase
     public function test_public_slot_generation_respects_duration_and_buffer(): void
     {
         $user = $this->approvedPhotographer();
+        $user->forceFill(['slot_interval_minutes' => 30])->save();
         $package = $this->publishedPackageFor($user, [
             'duration_minutes' => 120,
             'buffer_minutes' => 30,
         ]);
         $date = now()->addDays(7)->format('Y-m-d');
+        // Same reasoning as the month-calendar test: without at least one
+        // BookingHour row, AvailabilityService's "fully open by default"
+        // fallback makes the whole day bookable, not just the window below.
+        \App\Models\BookingHour::create([
+            'user_id' => $user->id,
+            'day_of_week' => (\Carbon\Carbon::parse($date)->dayOfWeek + 4) % 7,
+            'start_time' => '00:00',
+            'end_time' => '23:59',
+        ]);
         $this->createAvailabilityWindow($user, $date, '09:00', '13:00');
 
         $slots = $this->assertSlotListFor($user, $package, $date);
@@ -115,7 +125,7 @@ class PublicAvailabilityTest extends TestCase
         $date = now()->addDays(7)->format('Y-m-d');
 
         $this->createAvailabilityWindow($user, $date, '09:00', '12:00');
-        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Accepted);
+        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Confirmed);
 
         $slots = $this->assertSlotListFor($user, $package, $date);
 
@@ -143,8 +153,7 @@ class PublicAvailabilityTest extends TestCase
         $date = now()->addDays(7)->format('Y-m-d');
 
         $this->createAvailabilityWindow($user, $date, '09:00', '12:00');
-        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Rejected);
-
+        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Cancelled);
         $slots = $this->assertSlotListFor($user, $package, $date);
 
         $this->assertContains('10:00', $slots);
@@ -188,6 +197,18 @@ class PublicAvailabilityTest extends TestCase
         $availableDate = now()->addMonthNoOverflow()->startOfMonth()->addDays(2);
         $partialDate = $availableDate->copy()->addDay();
         $unavailableDate = $availableDate->copy()->addDays(2);
+
+        // Give this photographer usual hours on an unrelated weekday only,
+        // so "no explicit availability for this date" actually means
+        // closed for the three test dates below (see AvailabilityService's
+        // "fully open by default" fallback, which only applies when NO
+        // BookingHour rows exist at all).
+        \App\Models\BookingHour::create([
+            'user_id' => $user->id,
+            'day_of_week' => ($availableDate->dayOfWeek + 4) % 7,
+            'start_time' => '09:00',
+            'end_time' => '17:00',
+        ]);
 
         $this->createAvailabilityWindow($user, $availableDate->format('Y-m-d'));
         $this->createAvailabilityWindow($user, $partialDate->format('Y-m-d'));

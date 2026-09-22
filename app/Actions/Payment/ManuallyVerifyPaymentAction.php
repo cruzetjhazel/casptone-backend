@@ -9,7 +9,7 @@ use App\Enums\PaymentMatchingStatus;
 use App\Enums\PaymentPlan;
 use App\Models\Payment;
 use App\Models\User;
-use App\Services\Booking\SlotConflictService;
+use App\Services\Photographer\Booking\SlotConflictService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 

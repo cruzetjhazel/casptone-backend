@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Booking;
+namespace App\Services\Photographer\Booking;
 
 use App\Actions\ActivityLog\LogActivityAction;
 use App\Enums\BookingPaymentStatus;

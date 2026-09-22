@@ -20,6 +20,7 @@ class PhotographerRegistrationTest extends TestCase
             'password' => 'Str0ngPass!23',
             'password_confirmation' => 'Str0ngPass!23',
             'photographer_type' => 'freelancer',
+            'terms_accepted' => true,
         ]);
 
         $response->assertCreated()->assertJsonPath('success', true);

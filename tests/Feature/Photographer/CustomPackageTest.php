@@ -63,6 +63,8 @@ class CustomPackageTest extends TestCase
 
         $response = $this->postJson('/api/photographer/custom-package/components', [
             'type' => 'photo_count_tier',
+            'type' => 'tier_option',
+            'tier_name' => 'Photo Count',
             'label' => '100 Photos',
             'price_addition' => 1000,
         ]);

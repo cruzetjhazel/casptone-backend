@@ -13,7 +13,7 @@ use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\PhotographerPaymentReference;
 use App\Models\User;
-use App\Services\Booking\SlotConflictService;
+use App\Services\Photographer\Booking\SlotConflictService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 

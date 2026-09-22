@@ -26,6 +26,7 @@ class CreateBookingTest extends TestCase
     PhotographerProfile::factory()->for($user)->complete()->create();
     PhotographerPortfolioImage::factory()->for($user)->count(6)->create();
     Package::factory()->for($user)->published()->create();
+    \App\Models\PhotographerPaymentConfig::factory()->for($user)->create();
 
     AvailabilityWindow::factory()->for($user)->create([
         'date' => now()->addDays(10)->format('Y-m-d'),
