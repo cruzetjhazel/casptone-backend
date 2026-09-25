@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Booking;
 
+use App\Enums\ServiceTrackerStatus;
 use App\Models\Booking;
 use App\Models\PhotographerApplication;
 use App\Models\User;
@@ -45,50 +46,56 @@ class ServiceTrackerTest extends TestCase
         $this->assertNotNull($booking->fresh()->service_status_updated_at);
     }
 
-    public function test_service_tracker_walks_through_every_stage_in_order(): void
+        public function test_service_tracker_walks_through_every_manual_stage_in_order(): void
     {
         $photographer = $this->approvedPhotographer();
+        // Confirmed + fully paid: BookingObserver auto-starts the tracker at "upcoming".
         $booking = Booking::factory()->confirmed()->create(['photographer_id' => $photographer->id]);
         Sanctum::actingAs($photographer);
 
-        $stages = ['upcoming', 'event_day', 'in_progress', 'photo_editing', 'ready_for_release', 'completed'];
-
-        foreach ($stages as $stage) {
+        foreach (['event_day', 'editing', 'delivered'] as $stage) {
             $this->patchJson("/api/photographer/bookings/{$booking->id}/service-tracker", [
                 'service_status' => $stage,
             ])->assertOk()->assertJsonPath('data.service_status', $stage);
         }
 
-        $this->assertSame('completed', $booking->fresh()->status->value);
+        // Delivered does NOT complete the booking on its own.
+        $this->assertSame('confirmed', $booking->fresh()->status->value);
     }
 
-    public function test_reaching_completed_stage_completes_the_booking(): void
+    public function test_tracker_stages_cannot_be_skipped(): void
     {
         $photographer = $this->approvedPhotographer();
         $booking = Booking::factory()->confirmed()->create(['photographer_id' => $photographer->id]);
         Sanctum::actingAs($photographer);
 
+        // upcoming -> editing skips event_day
         $this->patchJson("/api/photographer/bookings/{$booking->id}/service-tracker", [
-            'service_status' => 'completed',
-        ])->assertOk()->assertJsonPath('data.status', 'completed');
+            'service_status' => 'editing',
+        ])->assertStatus(422);
+    }
+
+    public function test_marking_service_completed_after_delivery_completes_the_booking(): void
+    {
+        $photographer = $this->approvedPhotographer();
+        $booking = Booking::factory()
+            ->withServiceStatus(ServiceTrackerStatus::Delivered)
+            ->create(['photographer_id' => $photographer->id]);
+        Sanctum::actingAs($photographer);
+
+        $this->postJson("/api/photographer/bookings/{$booking->id}/complete")->assertOk();
 
         $this->assertSame('completed', $booking->fresh()->status->value);
     }
 
-    public function test_moving_tracker_back_off_completed_uncompletes_the_booking(): void
+    public function test_cannot_mark_completed_before_the_tracker_reaches_delivered(): void
     {
         $photographer = $this->approvedPhotographer();
-        $booking = Booking::factory()->completed()->create([
-            'photographer_id' => $photographer->id,
-            'service_status' => 'completed',
-        ]);
+        $booking = Booking::factory()->confirmed()->create(['photographer_id' => $photographer->id]);
         Sanctum::actingAs($photographer);
 
-        $response = $this->patchJson("/api/photographer/bookings/{$booking->id}/service-tracker", [
-            'service_status' => 'ready_for_release',
-        ]);
+        $this->postJson("/api/photographer/bookings/{$booking->id}/complete")->assertStatus(422);
 
-        $response->assertOk()->assertJsonPath('data.status', 'confirmed');
         $this->assertSame('confirmed', $booking->fresh()->status->value);
     }
 

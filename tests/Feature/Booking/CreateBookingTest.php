@@ -102,13 +102,39 @@ class CreateBookingTest extends TestCase
         $this->postJson('/api/client/bookings', $payload)->assertStatus(422);
     }
 
-    public function test_conflicting_time_is_rejected(): void
+    // Business rule (revised): a slot is only ever truly "taken" once a
+    // booking for it has a CONFIRMED payment. Multiple clients must be able
+    // to request — and even be accepted for — the same overlapping slot,
+    // so a photographer can keep a backup request alive in case the first
+    // client never pays. See CreateBookingAction / AvailabilityService.
+    public function test_multiple_clients_can_request_the_same_unpaid_slot(): void
     {
         $photographer = $this->bookablePhotographer();
         $client = User::factory()->create();
         Sanctum::actingAs($client);
 
         $this->postJson('/api/client/bookings', $this->validPayload($photographer))->assertCreated();
+
+        $otherClient = User::factory()->create();
+        Sanctum::actingAs($otherClient);
+
+        $this->postJson('/api/client/bookings', $this->validPayload($photographer))->assertCreated();
+    }
+
+    public function test_conflicting_time_is_rejected_once_a_booking_is_paid_and_confirmed(): void
+    {
+        $photographer = $this->bookablePhotographer();
+        $firstClient = User::factory()->create();
+
+        \App\Models\Booking::factory()->create([
+            'client_id' => $firstClient->id,
+            'photographer_id' => $photographer->id,
+            'event_date' => now()->addDays(10)->format('Y-m-d'),
+            'start_time' => '09:00',
+            'end_time' => '11:30',
+            'status' => \App\Enums\BookingStatus::Confirmed,
+            'payment_status' => \App\Enums\BookingPaymentStatus::FullyPaid,
+        ]);
 
         $otherClient = User::factory()->create();
         Sanctum::actingAs($otherClient);
@@ -146,14 +172,14 @@ class CreateBookingTest extends TestCase
         $response = $this->postJson('/api/client/bookings', $payload);
 
         $response->assertCreated();
-        $this->assertEquals($package->price + 1500, $response->json('data.total_price'));
+        $this->assertEquals($package->price + 1500 + config('platform.fee', 30.00), $response->json('data.total_price'));
     }
 
     public function test_custom_package_booking_uses_configured_pricing(): void
     {
         $photographer = $this->bookablePhotographer();
         CustomPackageConfig::factory()->for($photographer)->create(['enabled' => true, 'base_fee' => 2000]);
-        $component = CustomPackageComponent::factory()->for($photographer)->create(['price_addition' => 1000]);
+        $component = CustomPackageComponent::factory()->for($photographer)->create(['price_addition' => 1000, 'duration_minutes' => 120]);
 
         $client = User::factory()->create();
         Sanctum::actingAs($client);
@@ -166,7 +192,7 @@ class CreateBookingTest extends TestCase
         $response = $this->postJson('/api/client/bookings', $payload);
 
         $response->assertCreated();
-        $this->assertEquals(3000, $response->json('data.total_price'));
+        $this->assertEquals(2000 + 1000 + config('platform.fee', 30.00), $response->json('data.total_price'));
     }
 
     public function test_event_address_required_for_non_studio_location(): void
@@ -188,7 +214,27 @@ class CreateBookingTest extends TestCase
         Sanctum::actingAs($client);
 
         $payload = $this->validPayload($photographer);
+        $province = \App\Models\LocationProvince::create([
+            'psgc_code' => '0000000001',
+            'name' => 'Test Province',
+            'region_code' => '05',
+        ]);
+        $city = \App\Models\LocationCityMunicipality::create([
+            'psgc_code' => '0000000002',
+            'province_id' => $province->id,
+            'name' => 'Test Municipality',
+            'type' => 'municipality',
+        ]);
+        $barangay = \App\Models\LocationBarangay::create([
+            'psgc_code' => '0000000003',
+            'city_municipality_id' => $city->id,
+            'name' => 'Test Barangay',
+        ]);
+
         $payload['location_type'] = 'outdoor_location';
+        $payload['province_id'] = $province->id;
+        $payload['city_municipality_id'] = $city->id;
+        $payload['barangay_id'] = $barangay->id;
         $payload['event_address'] = '123 Test St';
 
         $response = $this->postJson('/api/client/bookings', $payload);

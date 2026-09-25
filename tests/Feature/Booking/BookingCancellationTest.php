@@ -75,7 +75,7 @@ class BookingCancellationTest extends TestCase
 
         $response = $this->postJson("/api/photographer/bookings/{$booking->id}/cancellation/reject");
 
-        $response->assertOk()->assertJsonPath('data.status', 'accepted');
+        $response->assertOk()->assertJsonPath('data.status', 'confirmed');
         $this->assertSame('rejected', $booking->fresh()->cancellation_decision->value);
     }
 

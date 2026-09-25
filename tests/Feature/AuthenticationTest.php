@@ -20,6 +20,7 @@ class AuthenticationTest extends TestCase
             'phone_number' => '09171234567',
             'password' => 'Str0ngPass!23',
             'password_confirmation' => 'Str0ngPass!23',
+            'terms_accepted' => true,
         ]);
 
         $response->assertCreated()

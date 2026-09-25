@@ -28,7 +28,7 @@ class NotificationApiTest extends TestCase
         $response = $this->getJson('/api/notifications');
 
         $response->assertOk();
-        $this->assertCount(1, $response->json('data.data'));
+        $this->assertCount(1, $response->json('data'));
     }
 
     public function test_user_cannot_see_another_users_notifications(): void
@@ -43,7 +43,7 @@ class NotificationApiTest extends TestCase
         $response = $this->getJson('/api/notifications');
 
         $response->assertOk();
-        $this->assertCount(0, $response->json('data.data'));
+        $this->assertCount(0, $response->json('data'));
     }
 
     public function test_user_cannot_mark_another_users_notification_as_read(): void
@@ -69,7 +69,7 @@ class NotificationApiTest extends TestCase
 
         $this->postJson("/api/notifications/{$notificationId}/read")
             ->assertOk()
-            ->assertJsonPath('data.read_at', fn ($value) => $value !== null);
+            ->assertJsonPath('data.read', true);
     }
 
     public function test_mark_all_as_read(): void

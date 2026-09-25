@@ -2,6 +2,7 @@
 
 namespace App\Services\Photographer;
 
+use App\Enums\BookingPaymentStatus;
 use App\Enums\BookingStatus;
 use App\Models\AvailabilityWindow;
 use App\Models\BlockedDate;
@@ -15,9 +16,22 @@ use Illuminate\Support\Collection;
 /**
  * A date is bookable by default — it only becomes unavailable if the
  * photographer has explicitly blocked it (BlockedDate, full-day or partial)
- * or an active Booking already occupies the requested time. Approval of any
- * booking request is still entirely up to the photographer; this service
- * only determines whether a request can be *sent* for a given date/time.
+ * or a Booking with a CONFIRMED payment already occupies the requested time.
+ * Approval of any booking request is still entirely up to the photographer;
+ * this service only determines whether a request can be *sent* for a given
+ * date/time.
+ *
+ * Business rule (see SlotConflictService for the full rationale): a slot is
+ * only ever truly "taken" once a booking for it has a confirmed payment
+ * (partially or fully paid). A Pending request, or an accepted-but-unpaid
+ * Confirmed booking, must NOT remove the slot from the public calendar —
+ * otherwise a second client could never even submit a competing request,
+ * which would make the system first-come-first-served in practice despite
+ * CreateBookingAction explicitly allowing multiple overlapping requests.
+ * getAvailableStartTimes() is also what CreateBookingAction::
+ * assertSlotIsAvailable() checks a new request's start time against, so
+ * this one filter keeps the calendar and the booking-creation guard in
+ * sync automatically.
  *
  * Bookable hours for a date come from two layers, both optional:
  *  - BookingHour: the photographer's recurring "usual hours" per weekday
@@ -35,10 +49,17 @@ use Illuminate\Support\Collection;
  */
 class AvailabilityService
 {
-    // Bookings in these statuses actually hold the calendar slot.
+    // Only a Confirmed booking whose payment has actually been settled
+    // (partially or fully paid) holds the calendar slot. Pending requests
+    // and accepted-but-unpaid Confirmed bookings do NOT block the public
+    // calendar — see the class docblock.
     private const BLOCKING_BOOKING_STATUSES = [
-        BookingStatus::Pending,
         BookingStatus::Confirmed,
+    ];
+
+    private const BLOCKING_PAYMENT_STATUSES = [
+        BookingPaymentStatus::PartiallyPaid,
+        BookingPaymentStatus::FullyPaid,
     ];
 
     private const DEFAULT_SLOT_STEP_MINUTES = 60;
@@ -74,6 +95,7 @@ class AvailabilityService
         $bookingsByDate = Booking::query()
             ->where('photographer_id', $photographer->id)
             ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
+            ->whereIn('payment_status', self::BLOCKING_PAYMENT_STATUSES)
             ->whereBetween('event_date', [$start, $end])
             ->get()
             ->groupBy(fn ($b) => $b->event_date->format('Y-m-d'));
@@ -132,10 +154,10 @@ class AvailabilityService
             ->where('user_id', $photographer->id)
             ->where('date', $date)
             ->get();
-
         $bookings = Booking::query()
             ->where('photographer_id', $photographer->id)
             ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
+            ->whereIn('payment_status', self::BLOCKING_PAYMENT_STATUSES)
             ->where('event_date', $date)
             ->get();
 

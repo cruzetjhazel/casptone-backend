@@ -7,5 +7,5 @@ return [
      * handling / no-show support process — NOT a regulated insurance
      * product; the frontend must present it with that plain disclaimer.
      */
-    'fee' => (float) env('PLATFORM_FEE', 30.00),
+    'fee' => (float) env('PLATFORM_FEE', 0.00),
 ];

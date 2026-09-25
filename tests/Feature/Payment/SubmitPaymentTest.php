@@ -111,7 +111,8 @@ class SubmitPaymentTest extends TestCase
 
         $response->assertCreated()->assertJsonPath('data.matching_status', 'not_matched');
         $fresh = $booking->fresh();
-        $this->assertEquals('accepted', $fresh->status->value); // never auto-confirms
+        $this->assertEquals('confirmed', $fresh->status->value); // "accepted" is Confirmed now
+$this->assertNull($fresh->service_status); // unmatched payment must not settle or start the tracker
         $this->assertEquals('pending_verification', $fresh->payment_status->value);
     }
 
@@ -142,8 +143,8 @@ class SubmitPaymentTest extends TestCase
             'payment_date' => now()->format('Y-m-d'),
         ]);
 
-        $response->assertCreated()->assertJsonPath('data.matching_status', 'not_matched');
-        $this->assertEquals('pending_verification', $second->fresh()->payment_status->value);
+        $response->assertStatus(422)->assertJsonValidationErrors(['reference_number']);
+        $this->assertNotSame('fully_paid', $second->fresh()->payment_status?->value);
     }
 
     public function test_cannot_pay_for_a_booking_that_is_not_accepted(): void

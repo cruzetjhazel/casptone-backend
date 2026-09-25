@@ -110,9 +110,31 @@ class User extends Authenticatable
         return $this->packages()->where('status', \App\Enums\PackageStatus::Published)->count();
     }
 
+    // A custom package only "counts" toward bookability once it's actually
+    // usable: enabled, with a real base fee, and — if sliding-hours pricing
+    // is on — a real hourly rate too. Enabling the toggle with fields left
+    // blank must not make a photographer look bookable when the booking flow
+    // would actually break for any client who picks a custom package.
+    public function hasUsableCustomPackage(): bool
+    {
+        $config = $this->customPackageConfig;
+
+        if (! $config || ! $config->enabled) {
+            return false;
+        }
+        if (! $config->base_fee || (float) $config->base_fee <= 0) {
+            return false;
+        }
+        if ($config->hourly_rate !== null && (float) $config->hourly_rate <= 0) {
+            return false;
+        }
+
+        return true;
+    }
+
     public function hasActivePackage(): bool
     {
-        return $this->activePackageCount() > 0;
+        return $this->activePackageCount() > 0 || $this->hasUsableCustomPackage();
     }
 
     public function isEligibleForBusinessManagement(): bool

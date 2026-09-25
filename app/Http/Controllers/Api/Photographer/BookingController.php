@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api\Photographer;
 
 use App\Actions\Booking\AcceptBookingAction;
+use App\Actions\Booking\AccommodateBookingAction;
 use App\Actions\Booking\DecideBookingCancellationAction;
 use App\Actions\Booking\DecideBookingRescheduleAction;
 use App\Actions\Booking\RejectBookingAction;
 use App\Enums\CancellationDecision;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AccommodateBookingRequest;
 use App\Http\Requests\RejectBookingRequest;
 use App\Http\Resources\BookingResource;
 use App\Models\Booking;
@@ -64,6 +66,27 @@ class BookingController extends Controller
         $booking = $action->execute($booking, CancellationDecision::Rejected);
 
         return $this->success(new BookingResource($booking), 'Cancellation request rejected.');
+    }
+
+    public function accommodationCandidates(Booking $booking)
+    {
+        $this->authorize('accommodate', $booking);
+
+        $candidates = $booking->accommodationCandidates()->latest()->get();
+
+        return $this->success(BookingResource::collection($candidates));
+    }
+
+    public function accommodate(AccommodateBookingRequest $request, Booking $booking, AccommodateBookingAction $action)
+    {
+        $this->authorize('accommodate', $booking);
+
+        $candidate = Booking::findOrFail($request->validated('candidate_booking_id'));
+        $this->authorize('accommodate', $candidate);
+
+        $accommodated = $action->execute($booking, $candidate);
+
+        return $this->success(new BookingResource($accommodated), 'Booking accommodated. The client can now proceed with payment.');
     }
 
     public function approveReschedule(Booking $booking, DecideBookingRescheduleAction $action)

@@ -92,6 +92,11 @@ class SlotConflictService
                 'status' => BookingStatus::Cancelled,
                 'payment_status' => BookingPaymentStatus::Cancelled,
                 'cancellation_reason' => 'Automatically declined — another client\'s payment for this same date/time was confirmed first.',
+                // Lets the photographer bring this client back via
+                // "Accommodate Other Reservation" if $confirmedBooking's
+                // reservation later falls through — see
+                // Booking::accommodationCandidates() and AccommodateBookingAction.
+                'superseded_by_booking_id' => $confirmedBooking->id,
             ]);
 
             $rival->client->notify(new \App\Notifications\Booking\BookingCancelledNotification($rival->fresh()));

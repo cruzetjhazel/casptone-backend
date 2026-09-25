@@ -66,6 +66,7 @@ class PhotographerPublicProfileResource extends JsonResource
                 'website' => $profile?->website,
             ],
             'phone' => $this->phone_number,
+            'email' => $this->email,
             'portfolio' => PortfolioImageResource::collection(
                 $this->portfolioImages
                     ->where('status', \App\Enums\PortfolioImageStatus::Active)

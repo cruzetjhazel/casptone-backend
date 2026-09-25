@@ -47,6 +47,11 @@ class BookingPolicy
         return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();
     }
 
+    public function accommodate(User $user, Booking $booking): bool
+    {
+        return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();
+    }
+
     public function manageServiceTracker(User $user, Booking $booking): bool
     {
         return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();

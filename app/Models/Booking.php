@@ -32,7 +32,7 @@ class Booking extends Model
         'event_address', 'guest_count', 'special_requests',
         'subtotal', 'total_price', 'status', 'hold_expires_at',
         'rejection_reason', 'cancellation_reason', 'cancellation_requested_at',
-        'cancellation_decision', 'cancellation_decided_at',
+        'cancellation_decision', 'cancellation_decided_at', 'superseded_by_booking_id',
         'requested_event_date', 'requested_start_time', 'reschedule_requested_at',
         'reschedule_decision', 'reschedule_decided_at',
         'modification_type', 'modification_reason', 'modification_requested_at',
@@ -103,6 +103,17 @@ class Booking extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * The booking whose confirmed payment auto-declined this one for the
+     * same photographer/slot (see SlotConflictService::releaseConflictingBookings).
+     * Null once this booking has been accommodated again, or if it was
+     * never superseded in the first place (e.g. an ordinary reject/cancel).
+     */
+    public function supersededBy(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class, 'superseded_by_booking_id');
     }
 
     public function review(): HasOne
@@ -208,5 +219,32 @@ class Booking extends Model
     public function isPaymentSettled(): bool
     {
         return in_array($this->payment_status, [BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid], true);
+    }
+
+    /**
+     * Other clients who previously requested this exact photographer/date/
+     * time and were auto-declined when THIS booking (or any other booking
+     * for the same overlapping slot) had its payment confirmed first — see
+     * SlotConflictService::releaseConflictingBookings, which is the only
+     * place superseded_by_booking_id gets set. Scoped by slot overlap
+     * rather than strictly to this booking's id so that clients who lost
+     * out across multiple prior rounds (e.g. a previously accommodated
+     * client who also later cancelled) all remain reviewable, per the
+     * "Accommodate Other Reservation" requirement.
+     *
+     * Only meaningful once this booking itself is Cancelled — call this
+     * after a previously paid/confirmed booking has been cancelled.
+     */
+    public function accommodationCandidates(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Booking::query()
+            ->where('photographer_id', $this->photographer_id)
+            ->where('event_date', $this->event_date)
+            ->where('id', '!=', $this->id)
+            ->where('status', BookingStatus::Cancelled)
+            ->whereNotNull('superseded_by_booking_id')
+            ->where('start_time', '<', $this->end_time)
+            ->where('end_time', '>', $this->start_time)
+            ->with('client');
     }
 }

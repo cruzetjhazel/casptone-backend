@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BookingPaymentStatus;
 use App\Enums\BookingStatus;
 use App\Models\Booking;
 use App\Models\AvailabilityWindow;
@@ -38,14 +39,21 @@ class PublicAvailabilityTest extends TestCase
         ]);
     }
 
-    protected function createBooking(User $photographer, string $date, string $startTime, string $endTime, BookingStatus $status): Booking
-    {
+    protected function createBooking(
+        User $photographer,
+        string $date,
+        string $startTime,
+        string $endTime,
+        BookingStatus $status,
+        ?BookingPaymentStatus $paymentStatus = null
+    ): Booking {
         return Booking::factory()->create([
             'photographer_id' => $photographer->id,
             'event_date' => $date,
             'start_time' => $startTime,
             'end_time' => $endTime,
             'status' => $status,
+            'payment_status' => $paymentStatus ?? BookingPaymentStatus::Pending,
             'hold_expires_at' => $status === BookingStatus::Pending ? now()->addHours(24) : null,
         ]);
     }
@@ -104,7 +112,10 @@ class PublicAvailabilityTest extends TestCase
         $this->assertContains('11:00', $slots);
     }
 
-    public function test_overlapping_pending_booking_blocks_availability(): void
+    // Business rule: a Pending request does NOT block the public calendar —
+    // multiple clients must be able to request the same date/time before
+    // anyone has paid. See AvailabilityService's class docblock.
+    public function test_overlapping_pending_booking_does_not_block_availability(): void
     {
         $user = $this->approvedPhotographer();
         $package = $this->publishedPackageFor($user, ['duration_minutes' => 60, 'buffer_minutes' => 0]);
@@ -115,31 +126,47 @@ class PublicAvailabilityTest extends TestCase
 
         $slots = $this->assertSlotListFor($user, $package, $date);
 
-        $this->assertNotContains('10:00', $slots);
+        $this->assertContains('10:00', $slots);
     }
 
-    public function test_overlapping_accepted_booking_blocks_availability(): void
+    // A Confirmed (accepted) booking whose payment hasn't been made yet
+    // still must NOT block the calendar — only a confirmed payment does.
+    public function test_overlapping_accepted_but_unpaid_booking_does_not_block_availability(): void
     {
         $user = $this->approvedPhotographer();
         $package = $this->publishedPackageFor($user, ['duration_minutes' => 60, 'buffer_minutes' => 0]);
         $date = now()->addDays(7)->format('Y-m-d');
 
         $this->createAvailabilityWindow($user, $date, '09:00', '12:00');
-        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Confirmed);
+        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Confirmed, BookingPaymentStatus::Pending);
+
+        $slots = $this->assertSlotListFor($user, $package, $date);
+
+        $this->assertContains('10:00', $slots);
+    }
+
+    public function test_overlapping_confirmed_and_partially_paid_booking_blocks_availability(): void
+    {
+        $user = $this->approvedPhotographer();
+        $package = $this->publishedPackageFor($user, ['duration_minutes' => 60, 'buffer_minutes' => 0]);
+        $date = now()->addDays(7)->format('Y-m-d');
+
+        $this->createAvailabilityWindow($user, $date, '09:00', '12:00');
+        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Confirmed, BookingPaymentStatus::PartiallyPaid);
 
         $slots = $this->assertSlotListFor($user, $package, $date);
 
         $this->assertNotContains('10:00', $slots);
     }
 
-    public function test_overlapping_confirmed_booking_blocks_availability(): void
+    public function test_overlapping_confirmed_and_fully_paid_booking_blocks_availability(): void
     {
         $user = $this->approvedPhotographer();
         $package = $this->publishedPackageFor($user, ['duration_minutes' => 60, 'buffer_minutes' => 0]);
         $date = now()->addDays(7)->format('Y-m-d');
 
         $this->createAvailabilityWindow($user, $date, '09:00', '12:00');
-        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Confirmed);
+        $this->createBooking($user, $date, '10:00', '11:00', BookingStatus::Confirmed, BookingPaymentStatus::FullyPaid);
 
         $slots = $this->assertSlotListFor($user, $package, $date);
 

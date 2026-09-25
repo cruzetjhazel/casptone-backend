@@ -189,13 +189,12 @@ class CreateBookingAction
                 ]);
             }
 
+            // Sliding-hours pricing is hours × rate only — no base fee.
             $flatComponents = $components->filter(fn ($c) => $c->duration_minutes === null);
-            $subtotal = (float) ($config->base_fee ?? 0)
-                + ((float) $config->hourly_rate * $hours)
+            $subtotal = ((float) $config->hourly_rate * $hours)
                 + (float) $flatComponents->sum('price_addition');
 
             $snapshot = [
-                'base_fee' => (string) ($config->base_fee ?? 0),
                 'hourly_rate' => (string) $config->hourly_rate,
                 'hours' => $hours,
                 'duration_minutes' => $hours * 60,

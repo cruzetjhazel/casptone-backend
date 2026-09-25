@@ -28,7 +28,7 @@ class BookingLifecycleTest extends TestCase
         Sanctum::actingAs($photographer);
 
         $this->postJson("/api/photographer/bookings/{$booking->id}/accept")
-            ->assertOk()->assertJsonPath('data.status', 'accepted');
+            ->assertOk()->assertJsonPath('data.status', 'confirmed');
     }
 
     public function test_photographer_can_reject_a_pending_booking_with_reason(): void
@@ -38,7 +38,7 @@ class BookingLifecycleTest extends TestCase
         Sanctum::actingAs($photographer);
 
         $this->postJson("/api/photographer/bookings/{$booking->id}/reject", ['reason' => 'Unavailable'])
-            ->assertOk()->assertJsonPath('data.status', 'rejected');
+            ->assertOk()->assertJsonPath('data.status', 'cancelled');
     }
 
     public function test_rejecting_requires_a_reason(): void

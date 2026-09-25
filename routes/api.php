@@ -201,6 +201,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings/{booking}/reject', [PhotographerBookingController::class, 'reject']);
         Route::post('bookings/{booking}/cancellation/approve', [PhotographerBookingController::class, 'approveCancellation']);
         Route::post('bookings/{booking}/cancellation/reject', [PhotographerBookingController::class, 'rejectCancellation']);
+        Route::get('bookings/{booking}/accommodation-candidates', [PhotographerBookingController::class, 'accommodationCandidates']);
+        Route::post('bookings/{booking}/accommodate', [PhotographerBookingController::class, 'accommodate']);
         Route::post('bookings/{booking}/reschedule/approve', [PhotographerBookingController::class, 'approveReschedule']);
         Route::post('bookings/{booking}/reschedule/reject', [PhotographerBookingController::class, 'rejectReschedule']);
         Route::patch('bookings/{booking}/service-tracker', [ServiceTrackerController::class, 'update']);
