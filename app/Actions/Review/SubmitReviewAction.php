@@ -16,7 +16,7 @@ class SubmitReviewAction
 
     public function execute(Booking $booking, array $data): Review
     {
-        if ($booking->status !== BookingStatus::Completed) {
+        if (! $booking->isReviewable()) {
             throw ValidationException::withMessages([
                 'booking_id' => ['You can only review a completed booking.'],
             ]);

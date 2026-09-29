@@ -9,27 +9,46 @@ class UpdateCustomPackageConfigAction
 {
     public function execute(User $user, array $data): CustomPackageConfig
     {
-        // The studio UI saves enabled/base_fee and buffer_minutes as separate
-        // requests (see StudioPackages.tsx's saveBaseFee vs. the buffer field).
-        // Falling back to 0 whenever buffer_minutes is omitted would silently
-        // wipe out an already-configured buffer on every unrelated save, so we
-        // fall back to whatever is already stored instead.
-        $existing = \App\Models\CustomPackageConfig::where('user_id', $user->id)->first();
-        $existingBuffer = $existing?->buffer_minutes ?? 0;
+        $existing = CustomPackageConfig::where('user_id', $user->id)->first();
 
-        return CustomPackageConfig::updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'enabled' => $data['enabled'],
-                'base_fee' => $data['base_fee'] ?? null,
-                'buffer_minutes' => $data['buffer_minutes'] ?? $existingBuffer,
-                // Same "don't silently wipe out an already-configured value"
-                // rule as buffer_minutes above — the studio UI may save
-                // these fields in a separate request from enabled/base_fee.
-                'hourly_rate' => array_key_exists('hourly_rate', $data) ? $data['hourly_rate'] : $existing?->hourly_rate,
-                'min_hours' => array_key_exists('min_hours', $data) ? $data['min_hours'] : $existing?->min_hours,
-                'max_hours' => array_key_exists('max_hours', $data) ? $data['max_hours'] : $existing?->max_hours,
-            ]
-        );
+        // A key the request omitted keeps its stored value — separate Save
+        // buttons (buffer time, on/off) must never wipe out pricing fields.
+        $keep = fn (string $key, $default = null) => array_key_exists($key, $data)
+            ? $data[$key]
+            : ($existing?->{$key} ?? $default);
+
+        $model = $data['pricing_model'] ?? null;
+
+        if (! $model) {
+            if (array_key_exists('hourly_rate', $data) || array_key_exists('base_fee', $data)) {
+                // Older clients send base_fee / hourly_rate without a pricing
+                // model: an hourly rate means hourly, otherwise fixed.
+                $model = ($data['hourly_rate'] ?? null) !== null ? 'hourly' : 'fixed';
+            } else {
+                $model = $existing?->pricing_model
+                    ?: ($existing?->hourly_rate !== null ? 'hourly' : 'fixed');
+            }
+        }
+
+        $isUnit = in_array($model, ['per_day', 'per_person'], true);
+
+        $values = [
+            'enabled' => $data['enabled'],
+            'pricing_model' => $model,
+            'buffer_minutes' => $keep('buffer_minutes', 0),
+            'base_fee' => $model === 'fixed' ? $keep('base_fee') : null,
+            'base_hours' => null,
+            'hourly_rate' => $model === 'hourly' ? $keep('hourly_rate') : null,
+            'min_hours' => $model === 'hourly' ? $keep('min_hours') : null,
+            'max_hours' => $model === 'hourly' ? $keep('max_hours') : null,
+            'unit_rate' => $isUnit ? $keep('unit_rate') : null,
+            'coverage_hours' => $isUnit ? $keep('coverage_hours') : null,
+            'max_people' => $model === 'per_person' ? $keep('max_people') : null,
+            'allows_multiple_sessions' => $model !== 'fixed' && (bool) $keep('allows_multiple_sessions', false),
+            'max_sessions' => $model !== 'fixed' ? $keep('max_sessions') : null,
+            'base_fee_mode' => null,
+        ];
+
+        return CustomPackageConfig::updateOrCreate(['user_id' => $user->id], $values);
     }
 }

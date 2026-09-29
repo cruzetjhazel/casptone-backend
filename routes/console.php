@@ -22,4 +22,4 @@ Schedule::call(fn () => app(ExpireStaleBookingHoldsAction::class)->execute())
 // Sanctum already rejects expired tokens on every request regardless of
 // pruning — this is just housekeeping, not itself a security control.
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
-
+Schedule::command('bookings:expire-stale')->everyMinute()->withoutOverlapping();

@@ -6,6 +6,7 @@ use App\Actions\ActivityLog\LogActivityAction;
 use App\Enums\BookingPaymentStatus;
 use App\Enums\BookingStatus;
 use App\Models\Booking;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -21,6 +22,12 @@ use Illuminate\Validation\ValidationException;
  * unpaid request that overlaps the same slot, so a photographer never ends
  * up needing to remember to clean those up by hand.
  *
+ * A booking can hold several photography sessions (its own first schedule
+ * plus any additional ones). Every session with a known end time is checked
+ * separately — against both other bookings' first schedules and their
+ * additional sessions. A session whose duration hasn't been confirmed
+ * (end_time null) is skipped: we never guess a window for it.
+ *
  * Callers (SubmitPaymentAction, ManuallyVerifyPaymentAction) must run both
  * methods inside a DB transaction with the photographer row locked
  * (`User::lockForUpdate()`), the same way CreateBookingAction does, so two
@@ -33,52 +40,89 @@ class SlotConflictService
     }
 
     /**
+     * Other bookings of the same photographer that have ANY session (first or
+     * additional) overlapping the given window, limited to $statuses.
+     */
+    protected function overlappingBookings(Booking $except, string $date, string $start, string $end, array $statuses)
+    {
+        return $except->photographer->bookingsAsPhotographer()
+            ->where('id', '!=', $except->id)
+            ->whereIn('status', $statuses)
+            ->where(function ($q) use ($date, $start, $end) {
+                $q->where(fn ($p) => $p->where('event_date', $date)
+                        ->where('start_time', '<', $end)
+                        ->where('end_time', '>', $start))
+                  ->orWhereHas('schedules', fn ($s) => $s->where('event_date', $date)
+                        ->where('start_time', '<', $end)
+                        ->where('end_time', '>', $start));
+            });
+    }
+
+    /**
      * Call this immediately before marking $booking's payment as confirmed.
-     * Throws if some OTHER booking for the same photographer/slot already
-     * has a confirmed payment — meaning this booking lost the race and its
-     * payment needs manual resolution (refund/reassignment) rather than
-     * being used to confirm a slot that's already gone.
+     * Throws if some OTHER booking for the same photographer already has a
+     * confirmed payment overlapping ANY of this booking's sessions — meaning
+     * this booking lost the race and its payment needs manual resolution
+     * (refund/reassignment) rather than being used to confirm a slot that's
+     * already gone.
      */
     public function assertNoPaidConflict(Booking $booking): void
     {
-        $conflict = $booking->photographer
-            ->bookingsAsPhotographer()
-            ->where('id', '!=', $booking->id)
-            ->where('event_date', $booking->event_date)
-            ->where('status', BookingStatus::Confirmed)
-            ->whereIn('payment_status', [BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid])
-            ->where('start_time', '<', $booking->end_time)
-            ->where('end_time', '>', $booking->start_time)
-            ->exists();
+        foreach ($booking->allSchedules() as $schedule) {
+            // No confirmed duration = nothing to range-check (never guessed).
+            if ($schedule->end_time === null) {
+                continue;
+            }
 
-        if ($conflict) {
-            throw ValidationException::withMessages([
-                'booking' => [
-                    'This time slot was already paid for and confirmed by another client while this payment was pending. '
-                    .'This payment needs manual review — it was NOT applied. Please contact the client about a refund or a new slot.',
-                ],
-            ]);
+            $conflict = $this->overlappingBookings(
+                $booking,
+                Carbon::parse($schedule->event_date)->toDateString(),
+                $schedule->start_time,
+                $schedule->end_time,
+                [BookingStatus::Confirmed],
+            )->whereIn('payment_status', [BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid])
+             ->exists();
+
+            if ($conflict) {
+                throw ValidationException::withMessages([
+                    'booking' => [
+                        'One of this booking\'s sessions was already paid for and confirmed by another client while this payment was pending. '
+                        .'This payment needs manual review — it was NOT applied. Please contact the client about a refund or a new slot.',
+                    ],
+                ]);
+            }
         }
     }
 
     /**
      * Call this right after $booking's payment is confirmed. Finds every
-     * other Pending or Confirmed-but-unpaid booking overlapping the same
-     * photographer/slot and auto-cancels them, notifying each affected
+     * other Pending or Confirmed-but-unpaid booking overlapping ANY of this
+     * booking's sessions and auto-cancels them, notifying each affected
      * client with a clear reason instead of leaving them hanging on a
      * request that can no longer be accepted.
      */
     public function releaseConflictingBookings(Booking $confirmedBooking): int
     {
-        $rivals = $confirmedBooking->photographer
-            ->bookingsAsPhotographer()
-            ->with('client')
-            ->where('id', '!=', $confirmedBooking->id)
-            ->where('event_date', $confirmedBooking->event_date)
-            ->whereIn('status', [BookingStatus::Pending, BookingStatus::Confirmed])
-            ->where('start_time', '<', $confirmedBooking->end_time)
-            ->where('end_time', '>', $confirmedBooking->start_time)
-            ->get()
+        $rivals = collect();
+
+        foreach ($confirmedBooking->allSchedules() as $schedule) {
+            if ($schedule->end_time === null) {
+                continue;
+            }
+
+            $rivals = $rivals->merge(
+                $this->overlappingBookings(
+                    $confirmedBooking,
+                    Carbon::parse($schedule->event_date)->toDateString(),
+                    $schedule->start_time,
+                    $schedule->end_time,
+                    [BookingStatus::Pending, BookingStatus::Confirmed],
+                )->with('client')->get()
+            );
+        }
+
+        $rivals = $rivals
+            ->unique('id')
             // Safety net: never auto-cancel something that is itself
             // already paid-confirmed — assertNoPaidConflict() should have
             // stopped us getting here, but a booking can't be silently

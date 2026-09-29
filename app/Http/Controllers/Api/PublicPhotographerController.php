@@ -35,6 +35,8 @@ class PublicPhotographerController extends Controller
                 'favoritePhotographers as favorites_count',
                 'bookingsAsPhotographer as bookings_count',
                 'reviews as reviews_count',
+                'bookingsAsPhotographer as completed_bookings_count' => fn ($q) =>
+                    $q->where('status', \App\Enums\BookingStatus::Completed),
             ])
             ->withAvg('reviews', 'rating')
             ->with([
@@ -48,9 +50,29 @@ class PublicPhotographerController extends Controller
             ])
             ->get()
             ->filter(fn ($photographer) => $bookabilityService->isBookable($photographer))
+            ->sort(fn ($a, $b) => $this->recommendedKey($b) <=> $this->recommendedKey($a))
             ->values();
 
         return $this->success(PhotographerPublicProfileResource::collection($photographers));
+    }
+
+    /**
+     * Stable "Recommended" ranking key. Compared descending, so the last
+     * element is -id: ties fall back to the lowest photographer ID first.
+     * (Bookable-first is already enforced by the isBookable() filter.)
+     */
+    private function recommendedKey(User $p): array
+    {
+        return [
+            $p->packages->where('status', \App\Enums\PackageStatus::Published)->count(), // 2. active packages
+            $p->portfolioImages->where('status', \App\Enums\PortfolioImageStatus::Active)->count()
+                + ($p->addOns->where('status', \App\Enums\AddOnStatus::Active)->isNotEmpty() ? 3 : 0)
+                + (filled($p->photographerProfile?->bio) ? 2 : 0), // 3. completeness
+            round((float) ($p->reviews_avg_rating ?? 0), 2),   // 4. rating
+            (int) ($p->reviews_count ?? 0),                    //    review count
+            (int) ($p->completed_bookings_count ?? 0),         // 5. completed bookings
+            -$p->id,                                           // 6. tie-breaker
+        ];
     }
 
     public function show(Request $request, User $user)

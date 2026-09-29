@@ -16,6 +16,9 @@ class PublicPackageResource extends JsonResource
             'included_items' => $this->included_items,
             'price' => $this->price,
             'duration_minutes' => $this->duration_minutes,
+            'schedule_mode' => $this->schedule_mode?->value ?? 'timed',
+            'allows_multiple_sessions' => (bool) $this->allows_multiple_sessions,
+            'max_sessions' => $this->max_sessions,
         ];
     }
 }

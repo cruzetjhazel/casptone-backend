@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\BookingExtensionResource;
 use App\Enums\BookingLocationType;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,6 +25,8 @@ class BookingResource extends JsonResource
             'event_date' => $this->event_date->format('Y-m-d'),
             'start_time' => $this->start_time,
             'end_time' => $this->end_time,
+            'duration_minutes' => $this->duration_minutes,
+            'duration_confirmed' => $this->end_time !== null,
             'location_type' => $this->location_type->value,
             'province' => $this->province ? ['id' => $this->province->id, 'name' => $this->province->name] : null,
             'city_municipality' => $this->cityMunicipality ? ['id' => $this->cityMunicipality->id, 'name' => $this->cityMunicipality->name] : null,
@@ -42,6 +45,14 @@ class BookingResource extends JsonResource
             'cancellation_requested_at' => $this->cancellation_requested_at,
             'cancellation_decision' => $this->cancellation_decision?->value,
             'cancellation_decided_at' => $this->cancellation_decided_at,
+            'non_completion_reason' => $this->non_completion_reason,
+            'non_completion_reported_at' => $this->non_completion_reported_at,
+            'non_completion_reported_by' => $this->non_completion_reported_by,
+            'non_completion_state' => $this->nonCompletionState(),
+            'non_completion_dispute_deadline_at' => $this->non_completion_dispute_deadline_at,
+            'non_completion_dispute_reason' => $this->non_completion_dispute_reason,
+            'non_completion_admin_notes' => $this->non_completion_admin_notes,
+            'is_reviewable' => $this->isReviewable(),
             'reschedule_request' => $this->reschedule_requested_at ? [
                 'requested_event_date' => $this->requested_event_date?->format('Y-m-d'),
                 'requested_start_time' => $this->requested_start_time,
@@ -66,6 +77,20 @@ class BookingResource extends JsonResource
             'service_status' => $this->service_status?->value,
             'service_status_updated_at' => $this->service_status_updated_at,
             'has_reviewed' => $this->review()->exists(),
+            // Sliding-hours custom bookings only — see Booking::
+            // isEligibleForExtensionRequest(). extensions is the full
+            // history (pending/approved/declined) so the UI can show past
+            // decisions, not just the current pending one.
+            'extension_eligible' => $this->isEligibleForExtensionRequest(),
+            'has_pending_extension' => $this->hasPendingExtensionRequest(),
+            'approved_extension_charge' => $this->approvedExtensionCharge(),
+            'extensions' => BookingExtensionResource::collection($this->extensions()->latest('requested_at')->get()),
+            // Schedule 1 (this booking's own date/time) + every additional
+            // BookingSchedule row, in one ordered list — see
+            // Booking::allSchedules(). Multi-date bookings (e.g. Prenup +
+            // Wedding on separate days) show up here as separate entries
+            // rather than one continuous date range.
+            'schedules' => BookingScheduleResource::collection($this->allSchedules()),
             'created_at' => $this->created_at,
         ];
     }

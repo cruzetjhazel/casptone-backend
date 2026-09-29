@@ -30,6 +30,12 @@ class RequestBookingRescheduleAction
             ]);
         }
 
+        if ($booking->end_time === null) {
+            throw ValidationException::withMessages([
+                'status' => ['This booking\'s duration has not been confirmed yet. Please ask the photographer to confirm it before requesting a reschedule.'],
+            ]);
+        }
+
         $neededMinutes = Carbon::parse($booking->start_time)->diffInMinutes(Carbon::parse($booking->end_time));
         $slots = $this->availabilityService->getAvailableStartTimes($booking->photographer, $eventDate, $neededMinutes);
 

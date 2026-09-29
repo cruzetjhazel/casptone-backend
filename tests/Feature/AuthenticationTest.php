@@ -16,7 +16,7 @@ class AuthenticationTest extends TestCase
     {
         $response = $this->postJson('/api/auth/register-client', [
             'name' => 'Jane',
-            'email' => 'jane@example.com',
+            'email' => 'jane@gmail.com',
             'phone_number' => '09171234567',
             'password' => 'Str0ngPass!23',
             'password_confirmation' => 'Str0ngPass!23',
@@ -27,7 +27,7 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonStructure(['data' => ['user' => ['id', 'email', 'account_type'], 'token']]);
 
-        $this->assertDatabaseHas('users', ['email' => 'jane@example.com', 'account_type' => 'client']);
+        $this->assertDatabaseHas('users', ['email' => 'jane@gmail.com', 'account_type' => 'client']);
     }
 
     public function test_user_can_login_with_correct_credentials(): void

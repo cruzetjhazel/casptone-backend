@@ -5,14 +5,18 @@ namespace App\Http\Controllers\Api\Photographer;
 use App\Actions\Booking\AcceptBookingAction;
 use App\Actions\Booking\AccommodateBookingAction;
 use App\Actions\Booking\DecideBookingCancellationAction;
+use App\Actions\Booking\DecideBookingExtensionAction;
 use App\Actions\Booking\DecideBookingRescheduleAction;
 use App\Actions\Booking\RejectBookingAction;
+use App\Enums\BookingExtensionStatus;
 use App\Enums\CancellationDecision;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AccommodateBookingRequest;
+use App\Http\Requests\DeclineBookingExtensionRequest;
 use App\Http\Requests\RejectBookingRequest;
 use App\Http\Resources\BookingResource;
 use App\Models\Booking;
+use App\Models\BookingExtension;
 use App\Traits\ApiResponses;
 use Illuminate\Http\Request;
 
@@ -48,6 +52,29 @@ class BookingController extends Controller
         $booking = $action->execute($booking, $request->validated('reason'));
 
         return $this->success(new BookingResource($booking), 'Booking rejected.');
+    }
+
+        public function reportNonCompletion(\App\Http\Requests\ReportBookingNonCompletionRequest $request, Booking $booking, \App\Actions\Booking\ReportBookingNonCompletionAction $action)
+    {
+        $this->authorize('view', $booking); // photographer already scoped to own bookings elsewhere in this controller
+
+        $booking = $action->execute(
+            $booking,
+            $request->user(),
+            \App\Enums\BookingNonCompletionReason::from($request->validated('reason')),
+            $request->validated('notes')
+        );
+
+        return $this->success(new BookingResource($booking), 'Reported.');
+    }
+
+        public function disputeNonCompletion(\App\Http\Requests\DisputeBookingNonCompletionRequest $request, Booking $booking, \App\Actions\Booking\DisputeBookingNonCompletionAction $action)
+    {
+        $this->authorize('view', $booking);
+
+        $booking = $action->execute($booking, $request->user(), $request->validated('reason'));
+
+        return $this->success(new BookingResource($booking), 'Dispute submitted.');
     }
 
     public function approveCancellation(Booking $booking, DecideBookingCancellationAction $action)
@@ -101,5 +128,25 @@ class BookingController extends Controller
         $this->authorize('decideReschedule', $booking);
 
         return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Rejected)), 'Reschedule rejected.');
+    }
+
+    public function approveExtension(Booking $booking, BookingExtension $extension, DecideBookingExtensionAction $action)
+    {
+        $this->authorize('decideExtension', $booking);
+        abort_unless($extension->booking_id === $booking->id, 404);
+
+        $action->execute($extension, BookingExtensionStatus::Approved);
+
+        return $this->success(new BookingResource($booking->fresh()), 'Extension approved. The client has been notified of the additional charge.');
+    }
+
+    public function declineExtension(DeclineBookingExtensionRequest $request, Booking $booking, BookingExtension $extension, DecideBookingExtensionAction $action)
+    {
+        $this->authorize('decideExtension', $booking);
+        abort_unless($extension->booking_id === $booking->id, 404);
+
+        $action->execute($extension, BookingExtensionStatus::Declined, $request->validated('reason'));
+
+        return $this->success(new BookingResource($booking->fresh()), 'Extension declined.');
     }
 }

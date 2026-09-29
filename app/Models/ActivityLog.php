@@ -22,6 +22,7 @@ class ActivityLog extends Model
     protected $casts = [
         'metadata' => 'array',
         'created_at' => 'datetime',
+        'archived_at' => 'datetime',
     ];
 
     public function causer(): BelongsTo

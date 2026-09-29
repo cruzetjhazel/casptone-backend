@@ -31,6 +31,7 @@ class AccommodateBookingAction
     public function __construct(
         protected LogActivityAction $activityLogger,
         protected SlotConflictService $slotConflictService,
+        protected \App\Services\Photographer\Booking\BookingDeadlineService $deadlines,
     ) {
     }
 
@@ -75,7 +76,7 @@ class AccommodateBookingAction
             $candidate->update([
                 'status' => BookingStatus::Confirmed,
                 'payment_status' => BookingPaymentStatus::Pending,
-                'hold_expires_at' => null,
+                'hold_expires_at' => $this->deadlines->paymentDeadline($candidate),
                 'superseded_by_booking_id' => null,
                 'cancellation_reason' => null,
                 'cancellation_requested_at' => null,

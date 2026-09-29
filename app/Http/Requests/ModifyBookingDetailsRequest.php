@@ -50,6 +50,20 @@ class ModifyBookingDetailsRequest extends FormRequest
                     $validator->errors()->add('barangay_id', 'This barangay does not belong to the selected city/municipality.');
                 }
             }
+
+            // Same province -> city -> barangay consistency check, per session.
+            foreach ((array) $this->input('additional_schedules', []) as $i => $s) {
+                $p = $s['province_id'] ?? null;
+                $c = $s['city_municipality_id'] ?? null;
+                $b = $s['barangay_id'] ?? null;
+
+                if ($c && $p && ! \App\Models\LocationCityMunicipality::where('id', $c)->where('province_id', $p)->exists()) {
+                    $validator->errors()->add("additional_schedules.$i.city_municipality_id", 'This city/municipality does not belong to the selected province.');
+                }
+                if ($b && $c && ! \App\Models\LocationBarangay::where('id', $b)->where('city_municipality_id', $c)->exists()) {
+                    $validator->errors()->add("additional_schedules.$i.barangay_id", 'This barangay does not belong to the selected city/municipality.');
+                }
+            }
         });
     }
 }

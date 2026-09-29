@@ -56,4 +56,14 @@ class BookingPolicy
     {
         return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();
     }
+
+    public function requestExtension(User $user, Booking $booking): bool
+    {
+        return $user->id === $booking->client_id;
+    }
+
+    public function decideExtension(User $user, Booking $booking): bool
+    {
+        return $user->id === $booking->photographer_id && $user->isEligibleForBusinessManagement();
+    }
 }

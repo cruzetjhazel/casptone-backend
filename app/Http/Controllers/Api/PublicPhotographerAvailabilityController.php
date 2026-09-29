@@ -65,10 +65,13 @@ class PublicPhotographerAvailabilityController extends Controller
     protected function durationSourceRules(): array
     {
         return [
-            'package_id' => ['required_without:custom_duration_minutes', 'nullable', 'integer'],
-            'custom_duration_minutes' => [
-                'required_without:package_id', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_CUSTOM_DURATION_MINUTES,
-            ],
+            // Both optional. With neither, the lookup is "start time only": a
+            // start is offered when the photographer is free at that moment
+            // (used on the date/time step, before a package is chosen).
+            'package_id' => ['nullable', 'integer'],
+            'custom_duration_minutes' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_CUSTOM_DURATION_MINUTES],
+            // Optional per-session coverage override, only used together with package_id.
+            'duration_minutes' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_CUSTOM_DURATION_MINUTES],
         ];
     }
 
@@ -85,7 +88,20 @@ class PublicPhotographerAvailabilityController extends Controller
         if ($request->filled('package_id')) {
             $package = $this->resolvePackage($user, $request->integer('package_id'));
 
-            return $package->duration_minutes + $package->buffer_minutes;
+            // Open-ended package: no window to reserve, only the start must be free.
+            if ($package->schedule_mode === \App\Enums\PackageScheduleMode::Open) {
+                return $this->startPointMinutes($user);
+            }
+
+            $coverage = $request->filled('duration_minutes')
+                ? $request->integer('duration_minutes')
+                : (int) $package->duration_minutes;
+
+            return $coverage + (int) $package->buffer_minutes;
+        }
+
+        if (! $request->filled('custom_duration_minutes')) {
+            return $this->startPointMinutes($user); // no package chosen yet
         }
 
         $config = $user->customPackageConfig;
@@ -97,6 +113,11 @@ class PublicPhotographerAvailabilityController extends Controller
         }
 
         return $request->integer('custom_duration_minutes') + (int) ($config->buffer_minutes ?? 0);
+    }
+
+    protected function startPointMinutes(User $user): int
+    {
+        return (int) ($user->slot_interval_minutes ?: 60);
     }
 
     protected function guardPublicAccess(User $user): void

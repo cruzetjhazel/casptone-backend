@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api\Client;
 
 use App\Actions\Booking\CreateBookingAction;
 use App\Actions\Booking\RequestBookingCancellationAction;
+use App\Actions\Booking\RequestBookingExtensionAction;
 use App\Actions\Booking\RequestBookingModificationAction;
 use App\Actions\Booking\RequestBookingRescheduleAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateBookingRequest;
 use App\Http\Requests\RequestBookingCancellationRequest;
+use App\Http\Requests\RequestBookingExtensionRequest;
 use App\Http\Requests\RequestBookingModificationRequest;
 use App\Http\Requests\RequestBookingRescheduleRequest;
 use App\Actions\Booking\ModifyBookingDetailsAction;
@@ -56,6 +58,29 @@ class BookingController extends Controller
         return $this->success(new BookingResource($booking), 'Cancellation requested.');
     }
 
+    public function reportNonCompletion(\App\Http\Requests\ReportBookingNonCompletionRequest $request, Booking $booking, \App\Actions\Booking\ReportBookingNonCompletionAction $action)
+    {
+        $this->authorize('requestCancellation', $booking); // same rule: must be this booking's client
+
+        $booking = $action->execute(
+            $booking,
+            $request->user(),
+            \App\Enums\BookingNonCompletionReason::from($request->validated('reason')),
+            $request->validated('notes')
+        );
+
+        return $this->success(new BookingResource($booking), 'Reported.');
+    }
+
+        public function disputeNonCompletion(\App\Http\Requests\DisputeBookingNonCompletionRequest $request, Booking $booking, \App\Actions\Booking\DisputeBookingNonCompletionAction $action)
+    {
+        $this->authorize('requestCancellation', $booking);
+
+        $booking = $action->execute($booking, $request->user(), $request->validated('reason'));
+
+        return $this->success(new BookingResource($booking), 'Dispute submitted.');
+    }
+
     public function requestReschedule(RequestBookingRescheduleRequest $request, Booking $booking, RequestBookingRescheduleAction $action)
     {
         $this->authorize('requestReschedule', $booking);
@@ -72,5 +97,14 @@ class BookingController extends Controller
         $booking = $action->execute($booking, $request->validated('type'), $request->validated('reason'));
 
         return $this->success(new BookingResource($booking), 'Modification request submitted.');
+    }
+
+    public function requestExtension(RequestBookingExtensionRequest $request, Booking $booking, RequestBookingExtensionAction $action)
+    {
+        $this->authorize('requestExtension', $booking);
+
+        $action->execute($booking, $request->validated('additional_hours'), $request->validated('schedule_id'));
+
+        return $this->success(new BookingResource($booking->fresh()), 'Additional coverage requested. The photographer will review it.');
     }
 }

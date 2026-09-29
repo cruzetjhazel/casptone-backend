@@ -38,10 +38,12 @@ use App\Http\Controllers\Api\Photographer\ReviewController as PhotographerReview
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Api\PublicPhotographerCustomPackageController;
+use App\Http\Controllers\Api\Admin\AnalyticsController as AdminAnalyticsController;
 use App\Http\Controllers\Api\Photographer\AnalyticsController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\ServiceSearchLogController;
 use App\Http\Controllers\Api\LocationController;
+
 
 Route::prefix('auth')->group(function () {
     Route::middleware('throttle:auth')->group(function () {
@@ -60,6 +62,7 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::post('auth/register-photographer', [AuthController::class, 'registerPhotographer'])->middleware('throttle:auth');
+Route::post('auth/check-email', [AuthController::class, 'checkEmail'])->middleware('throttle:30,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('photographer')->group(function () {
@@ -187,8 +190,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings', [ClientBookingController::class, 'store']);
         Route::get('bookings/{booking}', [ClientBookingController::class, 'show']);
         Route::post('bookings/{booking}/request-cancellation', [ClientBookingController::class, 'requestCancellation']);
+        Route::post('bookings/{booking}/report-non-completion', [ClientBookingController::class, 'reportNonCompletion']);
+        Route::post('bookings/{booking}/dispute-non-completion', [ClientBookingController::class, 'disputeNonCompletion']);
         Route::post('bookings/{booking}/reschedule', [ClientBookingController::class, 'requestReschedule']);
         Route::post('bookings/{booking}/request-modification', [ClientBookingController::class, 'requestModification']);
+        Route::post('bookings/{booking}/extensions', [ClientBookingController::class, 'requestExtension']);
         Route::get('bookings/{booking}/payment-info', [ClientPaymentController::class, 'paymentInfo']);
         Route::post('bookings/{booking}/payments', [ClientPaymentController::class, 'store']);
         Route::get('payments', [ClientPaymentController::class, 'index']);
@@ -199,12 +205,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('bookings/{booking}', [PhotographerBookingController::class, 'show']);
         Route::post('bookings/{booking}/accept', [PhotographerBookingController::class, 'accept']);
         Route::post('bookings/{booking}/reject', [PhotographerBookingController::class, 'reject']);
+        Route::post('bookings/{booking}/report-non-completion', [PhotographerBookingController::class, 'reportNonCompletion']);
+        Route::post('bookings/{booking}/dispute-non-completion', [PhotographerBookingController::class, 'disputeNonCompletion']);
         Route::post('bookings/{booking}/cancellation/approve', [PhotographerBookingController::class, 'approveCancellation']);
         Route::post('bookings/{booking}/cancellation/reject', [PhotographerBookingController::class, 'rejectCancellation']);
         Route::get('bookings/{booking}/accommodation-candidates', [PhotographerBookingController::class, 'accommodationCandidates']);
         Route::post('bookings/{booking}/accommodate', [PhotographerBookingController::class, 'accommodate']);
         Route::post('bookings/{booking}/reschedule/approve', [PhotographerBookingController::class, 'approveReschedule']);
         Route::post('bookings/{booking}/reschedule/reject', [PhotographerBookingController::class, 'rejectReschedule']);
+        Route::post('bookings/{booking}/extensions/{extension}/approve', [PhotographerBookingController::class, 'approveExtension']);
+        Route::post('bookings/{booking}/extensions/{extension}/decline', [PhotographerBookingController::class, 'declineExtension']);
         Route::patch('bookings/{booking}/service-tracker', [ServiceTrackerController::class, 'update']);
         Route::post('bookings/{booking}/complete', [ServiceTrackerController::class, 'complete']);
 
@@ -228,8 +238,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('admin/bookings', [AdminBookingController::class, 'index']);
     Route::get('admin/bookings/{booking}', [AdminBookingController::class, 'show']);
     Route::post('admin/bookings/{booking}/cancel', [AdminBookingController::class, 'cancel']);
+    Route::post('admin/bookings/{booking}/non-completion/resolve', [AdminBookingController::class, 'resolveNonCompletion']);
     Route::get('admin/dashboard-stats', [AdminDashboardController::class, 'stats']);
+    Route::get('admin/analytics', [AdminAnalyticsController::class, 'index']);
     Route::get('admin/activity-logs', [ActivityLogController::class, 'index']);
+    Route::post('admin/activity-logs/archive', [ActivityLogController::class, 'archive']);
 
     Route::prefix('admin/users')->group(function () {
         Route::get('/', [AdminUserController::class, 'index']);

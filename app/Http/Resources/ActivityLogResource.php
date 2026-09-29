@@ -16,6 +16,7 @@ class ActivityLogResource extends JsonResource
             'causer' => $this->whenLoaded('causer', fn () => $this->causer ? [
                 'id' => $this->causer->id,
                 'name' => $this->causer->name,
+                'account_type' => $this->causer->account_type?->value,
             ] : null),
             'subject_type' => $this->subject_type ? class_basename($this->subject_type) : null,
             'subject_id' => $this->subject_id,

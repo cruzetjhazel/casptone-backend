@@ -10,6 +10,8 @@ use App\Models\PhotographerApplication;
 use App\Models\User;
 use App\Traits\ApiResponses;
 use Illuminate\Http\Request;
+use App\Enums\BookingStatus;
+use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
@@ -47,9 +49,35 @@ class DashboardController extends Controller
             'professionals' => $professionals,
             'total_bookings' => $totalBookings,
             'pending_reviews' => $pendingReviews,
-            'analytics' => [
-                // placeholder shape — filled in once action names / date column confirmed
-            ],
+            'analytics' => $this->analyticsDeltas(),
         ]);
+    }
+        private function analyticsDeltas(): array
+    {
+        $now = Carbon::now();
+        $monthStart = $now->copy()->startOfMonth();
+        $lastMonthStart = $now->copy()->subMonthNoOverflow()->startOfMonth();
+        $lastMonthEnd = $now->copy()->subMonthNoOverflow()->endOfMonth();
+        $weekStart = $now->copy()->startOfWeek();
+        $lastWeekStart = $weekStart->copy()->subWeek();
+        $lastWeekEnd = $weekStart->copy()->subSecond();
+
+        $completed = fn ($from, $to) => Booking::where('status', BookingStatus::Completed)
+            ->whereBetween('event_date', [$from, $to])->count();
+        $newClients = fn ($from, $to) => User::where('account_type', AccountType::Client)
+            ->whereBetween('created_at', [$from, $to])->count();
+        $verified = fn ($from, $to) => PhotographerApplication::where('status', PhotographerApplicationStatus::Approved)
+            ->whereBetween('reviewed_at', [$from, $to])->count();
+
+        return [
+            'completed_bookings_change_pct' => $this->pctChange($completed($lastMonthStart, $lastMonthEnd), $completed($monthStart, $now)),
+            'new_clients_change_pct' => $this->pctChange($newClients($lastWeekStart, $lastWeekEnd), $newClients($weekStart, $now)),
+            'verified_professionals_change_pct' => $this->pctChange($verified($lastMonthStart, $lastMonthEnd), $verified($monthStart, $now)),
+        ];
+    }
+
+    private function pctChange(float $previous, float $current): ?float
+    {
+        return $previous <= 0 ? null : round((($current - $previous) / $previous) * 100, 1);
     }
 }

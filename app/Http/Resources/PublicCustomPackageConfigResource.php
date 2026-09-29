@@ -12,9 +12,13 @@ class PublicCustomPackageConfigResource extends JsonResource
         return [
             'enabled' => $this->enabled,
             'base_fee' => $this->base_fee,
+            'base_hours' => $this->base_hours,
             'hourly_rate' => $this->hourly_rate,
             'min_hours' => $this->min_hours,
             'max_hours' => $this->max_hours,
+            'allows_multiple_sessions' => (bool) $this->allows_multiple_sessions,
+            'max_sessions' => $this->max_sessions,
+            'base_fee_mode' => $this->base_fee_mode,
         ];
     }
 }

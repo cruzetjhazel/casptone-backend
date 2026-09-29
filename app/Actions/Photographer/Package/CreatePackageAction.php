@@ -21,8 +21,11 @@ class CreatePackageAction
             'description' => $data['description'] ?? null,
             'included_items' => $data['included_items'] ?? null,
             'price' => $data['price'],
-            'duration_minutes' => $data['duration_minutes'],
+            'duration_minutes' => $data['duration_minutes'] ?? null,
             'buffer_minutes' => $data['buffer_minutes'] ?? 0,
+            'schedule_mode' => $data['schedule_mode'] ?? 'timed',
+            'allows_multiple_sessions' => (bool) ($data['allows_multiple_sessions'] ?? false),
+            'max_sessions' => ($data['allows_multiple_sessions'] ?? false) ? ($data['max_sessions'] ?? null) : null,
             'status' => PackageStatus::Draft,
         ]);
 

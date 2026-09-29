@@ -40,7 +40,7 @@ class SubmitReportAction
             'severity' => $data['severity'],
             'details' => $data['details'],
             'requested_action' => $data['requested_action'],
-            'status' => ReportStatus::Pending,
+            'status' => ReportStatus::Submitted,
             'attachments' => $attachments,
         ]);
 

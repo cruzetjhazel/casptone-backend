@@ -227,9 +227,17 @@ class PhotographerShowcaseSeeder extends Seeder
         $this->command->info('Seeding showcase photographers...');
 
         foreach (self::PROVIDERS as $i => $data) {
+            // Merge into the DemoSeeder photographer with the same name (if one
+            // exists) instead of creating a second, duplicate-named account.
+            $existing = User::where('account_type', AccountType::Photographer)
+                ->where('name', $data['name'])
+                ->orderBy('id')
+                ->first();
+
             $user = User::updateOrCreate(
-                ['email' => $data['email']],
+                $existing ? ['id' => $existing->id] : ['email' => $data['email']],
                 [
+                    'email' => $data['email'],
                     'name' => $data['name'],
                     'phone_number' => $data['phone'],
                     'email_verified_at' => now(),

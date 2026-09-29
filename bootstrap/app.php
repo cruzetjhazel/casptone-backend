@@ -30,7 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->is('api/*')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'The given data was invalid.',
+                    'message' => collect($e->errors())->flatten()->first() ?? 'The given data was invalid.',
                     'errors' => $e->errors(),
                 ], 422);
             }

@@ -15,7 +15,7 @@ class PhotographerRegistrationTest extends TestCase
     {
         $response = $this->postJson('/api/auth/register-photographer', [
             'name' => 'Alex Freelancer',
-            'email' => 'alex@example.com',
+            'email' => 'alex@gmail.com',
             'phone_number' => '09171234567',
             'password' => 'Str0ngPass!23',
             'password_confirmation' => 'Str0ngPass!23',
@@ -26,7 +26,7 @@ class PhotographerRegistrationTest extends TestCase
         $response->assertCreated()->assertJsonPath('success', true);
 
         $this->assertDatabaseHas('users', [
-            'email' => 'alex@example.com',
+            'email' => 'alex@gmail.com',
             'account_type' => AccountType::Photographer->value,
         ]);
 
@@ -40,7 +40,7 @@ class PhotographerRegistrationTest extends TestCase
     {
         $response = $this->postJson('/api/auth/register-photographer', [
             'name' => 'Alex',
-            'email' => 'alex2@example.com',
+            'email' => 'alex2@gmail.com',
             'password' => 'Str0ngPass!23',
             'password_confirmation' => 'Str0ngPass!23',
         ]);
@@ -50,11 +50,11 @@ class PhotographerRegistrationTest extends TestCase
 
     public function test_duplicate_email_is_rejected(): void
     {
-        \App\Models\User::factory()->create(['email' => 'dupe@example.com']);
+        \App\Models\User::factory()->create(['email' => 'dupe@gmail.com']);
 
         $response = $this->postJson('/api/auth/register-photographer', [
             'name' => 'Alex',
-            'email' => 'dupe@example.com',
+            'email' => 'dupe@gmail.com',
             'password' => 'Str0ngPass!23',
             'password_confirmation' => 'Str0ngPass!23',
             'photographer_type' => 'studio',

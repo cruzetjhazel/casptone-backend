@@ -27,7 +27,10 @@ class PackageTest extends TestCase
         return [
             'name' => 'Basic Wedding Package',
             'description' => 'Wedding photography coverage',
-            'included_items' => ['8 hours coverage', '300 edited photos'],
+            'included_items' => [
+                ['name' => 'Coverage', 'detail' => '8 hours'],
+                ['name' => 'Edited photos', 'detail' => '300 photos'],
+            ],
             'price' => 10000,
             'duration_minutes' => 480,
             'buffer_minutes' => 30,

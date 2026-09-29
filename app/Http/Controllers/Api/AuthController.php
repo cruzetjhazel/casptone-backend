@@ -82,4 +82,19 @@ class AuthController extends Controller
             201
         );
     }
+    public function checkEmail(Request $request)
+{
+    $email = strtolower(trim((string) $request->input('email')));
+
+    if (!preg_match('/^[a-z0-9._%+\-]+@gmail\.com$/', $email)) {
+        return response()->json(['available' => false, 'reason' => 'invalid_domain']);
+    }
+
+    $exists = User::whereRaw('LOWER(email) = ?', [$email])->exists();
+
+    return response()->json([
+        'available' => !$exists,
+        'reason' => $exists ? 'taken' : null,
+    ]);
+}
 }

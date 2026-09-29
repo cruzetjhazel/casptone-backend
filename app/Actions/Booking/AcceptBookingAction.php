@@ -9,8 +9,10 @@ use Illuminate\Validation\ValidationException;
 
 class AcceptBookingAction
 {
-    public function __construct(protected LogActivityAction $activityLogger)
-    {
+    public function __construct(
+        protected LogActivityAction $activityLogger,
+        protected \App\Services\Photographer\Booking\BookingDeadlineService $deadlines,
+    ) {
     }
 
     public function execute(Booking $booking): Booking
@@ -21,9 +23,12 @@ class AcceptBookingAction
             ]);
         }
 
+        // Throws if the event is too close to collect a payment; nothing is saved then.
+        $paymentDeadline = $this->deadlines->paymentDeadline($booking);
+
         $booking->update([
             'status' => BookingStatus::Confirmed,
-            'hold_expires_at' => null,
+            'hold_expires_at' => $paymentDeadline, // client's payment deadline
         ]);
 
         $fresh = $booking->fresh();

@@ -9,6 +9,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,6 +31,22 @@ class AppServiceProvider extends ServiceProvider
         // Auto-advances service_status to Upcoming once payment settles —
         // see BookingObserver::saved().
         Booking::observe(BookingObserver::class);
+
+        // Login session: expire after 24 hours of INACTIVITY (not 24h after
+        // login). Sanctum stamps last_used_at on every authenticated request,
+        // so each request slides the window forward. A token that has never
+        // been used is measured from its creation time. Applies to every
+        // token: password login, registration and Google login.
+        // Change the window with SESSION_INACTIVITY_HOURS in .env.
+        Sanctum::authenticateAccessTokensUsing(function ($accessToken, bool $isValid) {
+            if (! $isValid) {
+                return false;
+            }
+
+            $lastActivity = $accessToken->last_used_at ?? $accessToken->created_at;
+
+            return $lastActivity->gt(now()->subHours((int) env('SESSION_INACTIVITY_HOURS', 24)));
+        });
         // Laravel's default ResetPassword notification links to a Blade route this
         // API-only backend doesn't have. Point it at the React frontend's actual
         // /reset-password page instead. FRONTEND_URL is read directly via env()

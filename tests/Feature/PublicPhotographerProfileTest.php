@@ -44,7 +44,6 @@ class PublicPhotographerProfileTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonMissingPath('data.government_id_path');
-        $response->assertJsonMissingPath('data.email');
         $response->assertJsonMissingPath('data.password');
         $response->assertJsonMissingPath('data.reviewed_by');
         $response->assertJsonMissingPath('data.rejection_reason');

@@ -34,7 +34,7 @@ class ReviewController extends Controller
         }
 
         // §7.24: reviewable only once the booking is Completed.
-        if ($booking->status !== BookingStatus::Completed) {
+        if (! $booking->isReviewable()) {
             throw ValidationException::withMessages([
                 'booking_id' => ['This booking is not eligible for a review yet.'],
             ]);

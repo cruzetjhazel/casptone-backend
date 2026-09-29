@@ -8,6 +8,7 @@ use App\Models\AvailabilityWindow;
 use App\Models\BlockedDate;
 use App\Models\BookingHour;
 use App\Models\Booking;
+use App\Models\BookingSchedule;
 use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -100,6 +101,17 @@ class AvailabilityService
             ->get()
             ->groupBy(fn ($b) => $b->event_date->format('Y-m-d'));
 
+        // Multi-schedule bookings (Prenup + Wedding on separate dates, say)
+        // occupy dates that never touch the booking's own event_date column
+        // — merge in every other booking's additional BookingSchedule rows
+        // so those dates are correctly blocked too. dayStatus()/
+        // startTimesForPeriods() only ever read ->event_date/->start_time/
+        // ->end_time, which BookingSchedule exposes identically to Booking,
+        // so the two model types can share one collection.
+        foreach ($this->additionalSchedulesByDate($photographer, $start, $end) as $dateStr => $schedules) {
+            $bookingsByDate[$dateStr] = $bookingsByDate->get($dateStr, collect())->concat($schedules);
+        }
+
         $summary = [];
         $today = Carbon::today();
 
@@ -161,6 +173,10 @@ class AvailabilityService
             ->where('event_date', $date)
             ->get();
 
+        // See getMonthSummary()'s equivalent merge — other bookings'
+        // additional schedule entries for this same date must block it too.
+        $bookings = $bookings->concat($this->additionalSchedulesByDate($photographer, $date, $date)->get($date, collect()));
+
         $periods = $this->resolvePeriods(
             $date,
             $carbonDate->dayOfWeek,
@@ -175,6 +191,28 @@ class AvailabilityService
     private function slotStepMinutes(User $photographer): int
     {
         return $photographer->slot_interval_minutes ?: self::DEFAULT_SLOT_STEP_MINUTES;
+    }
+
+    /**
+     * Other bookings' Schedule 2+ entries (BookingSchedule rows) within
+     * [start, end], grouped by "Y-m-d" — same blocking-status filter as
+     * the primary-schedule query above, applied through the parent
+     * booking relation since BookingSchedule itself carries no
+     * status/payment columns of its own.
+     *
+     * @return Collection<string, Collection<int, BookingSchedule>>
+     */
+    private function additionalSchedulesByDate(User $photographer, string $start, string $end): Collection
+    {
+        return BookingSchedule::query()
+            ->whereBetween('event_date', [$start, $end])
+            ->whereHas('booking', fn ($q) => $q
+                ->where('photographer_id', $photographer->id)
+                ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
+                ->whereIn('payment_status', self::BLOCKING_PAYMENT_STATUSES)
+            )
+            ->get()
+            ->groupBy(fn (BookingSchedule $s) => $s->event_date->format('Y-m-d'));
     }
 
     /**
@@ -299,7 +337,7 @@ class AvailabilityService
             // same duration being queried for, as a conservative fallback.
             $bookingEnd = $booking->end_time
                 ? Carbon::parse("{$bookingDateStr} {$booking->end_time}")
-                : $bookingStart->copy()->addMinutes($durationMinutes);
+                : $bookingStart->copy()->addMinutes($stepMinutes);
             $busyRanges[] = [$bookingStart, $bookingEnd];
         }
 

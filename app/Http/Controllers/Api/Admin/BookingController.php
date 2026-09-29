@@ -259,4 +259,18 @@ class BookingController extends Controller
             ];
         })->values();
     }
+
+        public function resolveNonCompletion(Request $request, Booking $booking, \App\Actions\Booking\ResolveNonCompletionDisputeAction $action)
+    {
+        abort_unless($request->user()->isAdministrator(), 403);
+
+        $data = $request->validate([
+            'decision' => ['required', 'in:upheld,overturned'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $booking = $action->execute($booking, $request->user(), $data['decision'], $data['notes'] ?? null);
+
+        return $this->success(new \App\Http\Resources\BookingResource($booking), 'Dispute resolved.');
+    }
 }

@@ -93,8 +93,8 @@ class DemoSeeder extends Seeder
             'price_max' => 12000,
             'years' => 3,
             'packages' => [
-                ['name' => 'Birthday Party Package', 'price' => 4000, 'items' => ['3 hours coverage', '100 edited photos', 'Online gallery']],
-                ['name' => 'Debut Documentation', 'price' => 8000, 'items' => ['6 hours coverage', '200 edited photos', 'Slideshow video']],
+                ['name' => 'Birthday Party Package', 'price' => 4000, 'duration_minutes' => 180, 'items' => ['3 hours coverage', '100 edited photos', 'Online gallery']],
+                ['name' => 'Debut Documentation', 'price' => 8000, 'duration_minutes' => 360, 'items' => ['6 hours coverage', '200 edited photos', 'Slideshow video']],
             ],
             'addons' => [
                 ['name' => 'Extra Hour', 'price' => 1000],
@@ -116,9 +116,9 @@ class DemoSeeder extends Seeder
             'price_max' => 15000,
             'years' => 6,
             'packages' => [
-                ['name' => 'Graduation Package', 'price' => 5000, 'items' => ['4 hours coverage', '150 edited photos', 'Custom album book']],
-                ['name' => 'Corporate Event Package', 'price' => 9000, 'items' => ['8 hours coverage', '300 edited photos', 'Highlights video']],
-                ['name' => 'Christening Coverage', 'price' => 6000, 'items' => ['5 hours coverage', '180 edited photos']],
+                ['name' => 'Graduation Package', 'price' => 5000, 'duration_minutes' => 240, 'items' => ['4 hours coverage', '150 edited photos', 'Custom album book']],
+                ['name' => 'Corporate Event Package', 'price' => 9000, 'duration_minutes' => 480, 'items' => ['8 hours coverage', '300 edited photos', 'Highlights video']],
+                ['name' => 'Christening Coverage', 'price' => 6000, 'duration_minutes' => 300, 'items' => ['5 hours coverage', '180 edited photos']],
             ],
             'addons' => [
                 ['name' => 'Drone Coverage', 'price' => 3000],
@@ -141,8 +141,8 @@ class DemoSeeder extends Seeder
             'price_max' => 14000,
             'years' => 2,
             'packages' => [
-                ['name' => 'Prenup Session', 'price' => 10000, 'items' => ['4 hours shooting', '250+ raw selections', 'Fine art editing', 'Digital gallery']],
-                ['name' => 'Portrait Session', 'price' => 5000, 'items' => ['2 hours session', '80 edited images', 'Location flexibility']],
+                ['name' => 'Prenup Session', 'price' => 10000, 'duration_minutes' => 240, 'items' => ['4 hours shooting', '250+ raw selections', 'Fine art editing', 'Digital gallery']],
+                ['name' => 'Portrait Session', 'price' => 5000, 'duration_minutes' => 120, 'items' => ['2 hours session', '80 edited images', 'Location flexibility']],
             ],
             'addons' => [
                 ['name' => 'Cinematic Video Edit', 'price' => 3500],
@@ -164,9 +164,9 @@ class DemoSeeder extends Seeder
             'price_max' => 10000,
             'years' => 4,
             'packages' => [
-                ['name' => 'Newborn Bundle', 'price' => 6000, 'items' => ['In-home session', '150 edited photos', '2 digitally created backdrops']],
-                ['name' => 'Family Portrait Session', 'price' => 4000, 'items' => ['2 hours session', '120 edited images', 'Outfit change included']],
-                ['name' => 'Children\'s Portrait', 'price' => 2500, 'items' => ['1 hour session', '60 images', 'One location']],
+                ['name' => 'Newborn Bundle', 'price' => 6000, 'duration_minutes' => 90, 'items' => ['In-home session', '150 edited photos', '2 digitally created backdrops']],
+                ['name' => 'Family Portrait Session', 'price' => 4000, 'duration_minutes' => 120, 'items' => ['2 hours session', '120 edited images', 'Outfit change included']],
+                ['name' => 'Children\'s Portrait', 'price' => 2500, 'duration_minutes' => 60, 'items' => ['1 hour session', '60 images', 'One location']],
             ],
             'addons' => [
                 ['name' => 'Maternity Session', 'price' => 2000],
@@ -189,9 +189,9 @@ class DemoSeeder extends Seeder
             'price_max' => 18000,
             'years' => 5,
             'packages' => [
-                ['name' => 'Bride & Groom Session', 'price' => 12000, 'items' => ['3 hours coverage', '200+ edited photos', 'Highlight video']],
-                ['name' => 'Prenup Essentials', 'price' => 8000, 'items' => ['3 hour shoot', '150 images', 'Custom album']],
-                ['name' => 'Engagement Shoot', 'price' => 5000, 'items' => ['2 hours coverage', '100 edited photos']],
+                ['name' => 'Bride & Groom Session', 'price' => 12000, 'duration_minutes' => 180, 'items' => ['3 hours coverage', '200+ edited photos', 'Highlight video']],
+                ['name' => 'Prenup Essentials', 'price' => 8000, 'duration_minutes' => 180, 'items' => ['3 hour shoot', '150 images', 'Custom album']],
+                ['name' => 'Engagement Shoot', 'price' => 5000, 'duration_minutes' => 120, 'items' => ['2 hours coverage', '100 edited photos']],
             ],
             'addons' => [
                 ['name' => 'Cinematic Same-Day Edit', 'price' => 4000],
@@ -213,9 +213,9 @@ class DemoSeeder extends Seeder
             'price_max' => 20000,
             'years' => 7,
             'packages' => [
-                ['name' => 'Full Day Wedding', 'price' => 18000, 'items' => ['10 hours coverage', '400+ edited photos', 'Highlight film', 'Album']],
-                ['name' => 'Corporate Event Package', 'price' => 10000, 'items' => ['8 hours coverage', '250 edited photos', 'Slideshow']],
-                ['name' => 'Half Day Event', 'price' => 6000, 'items' => ['5 hours coverage', '150 photos', 'Online gallery']],
+                ['name' => 'Full Day Wedding', 'price' => 18000, 'duration_minutes' => 600, 'items' => ['10 hours coverage', '400+ edited photos', 'Highlight film', 'Album']],
+                ['name' => 'Corporate Event Package', 'price' => 10000, 'duration_minutes' => 480, 'items' => ['8 hours coverage', '250 edited photos', 'Slideshow']],
+                ['name' => 'Half Day Event', 'price' => 6000, 'duration_minutes' => 300, 'items' => ['5 hours coverage', '150 photos', 'Online gallery']],
             ],
             'addons' => [
                 ['name' => 'Event Videography', 'price' => 5000],
@@ -239,9 +239,9 @@ class DemoSeeder extends Seeder
             'years' => 7,
             'team_size' => 5,
             'packages' => [
-                ['name' => 'Wedding + Videography Package', 'price' => 35000, 'items' => ['12 hours dual coverage', '500+ edited photos', '4K cinematic video', 'Teaser & full edit']],
-                ['name' => 'Debut Full Service', 'price' => 18000, 'items' => ['8 hours coverage', '300 photos', 'HD video highlights', 'Album']],
-                ['name' => 'Corporate Video Package', 'price' => 15000, 'items' => ['8 hours video', 'Full event coverage', 'Edited highlights', 'Drone shots']],
+                ['name' => 'Wedding + Videography Package', 'price' => 35000, 'duration_minutes' => 720, 'items' => ['12 hours dual coverage', '500+ edited photos', '4K cinematic video', 'Teaser & full edit']],
+                ['name' => 'Debut Full Service', 'price' => 18000, 'duration_minutes' => 480, 'items' => ['8 hours coverage', '300 photos', 'HD video highlights', 'Album']],
+                ['name' => 'Corporate Video Package', 'price' => 15000, 'duration_minutes' => 480, 'items' => ['8 hours video', 'Full event coverage', 'Edited highlights', 'Drone shots']],
             ],
             'addons' => [
                 ['name' => 'Drone Aerial', 'price' => 3500],
@@ -265,9 +265,9 @@ class DemoSeeder extends Seeder
             'years' => 5,
             'team_size' => 3,
             'packages' => [
-                ['name' => 'Intimate Wedding Package', 'price' => 22000, 'items' => ['8 hours coverage', '250+ edited photos', 'Handmade album', 'Engagement session included']],
-                ['name' => 'Fine Art Portrait Session', 'price' => 8000, 'items' => ['3 hour session', '150 images', 'Studio or location', 'Custom backdrop']],
-                ['name' => 'Debut Elegance', 'price' => 14000, 'items' => ['6 hours coverage', '200 images', 'Professional album']],
+                ['name' => 'Intimate Wedding Package', 'price' => 22000, 'duration_minutes' => 480, 'items' => ['8 hours coverage', '250+ edited photos', 'Handmade album', 'Engagement session included']],
+                ['name' => 'Fine Art Portrait Session', 'price' => 8000, 'duration_minutes' => 180, 'items' => ['3 hour session', '150 images', 'Studio or location', 'Custom backdrop']],
+                ['name' => 'Debut Elegance', 'price' => 14000, 'duration_minutes' => 360, 'items' => ['6 hours coverage', '200 images', 'Professional album']],
             ],
             'addons' => [
                 ['name' => 'Engagement Session', 'price' => 3500],
@@ -290,9 +290,9 @@ class DemoSeeder extends Seeder
             'years' => 4,
             'team_size' => 4,
             'packages' => [
-                ['name' => 'Romantic Wedding Package', 'price' => 28000, 'items' => ['10 hours coverage', '350+ photos', 'Candid + posed blend', 'Album & slideshow']],
-                ['name' => 'Prenup Escape', 'price' => 12000, 'items' => ['4 hours outdoor shoot', '200 images', 'Album included']],
-                ['name' => 'Family & Milestone Session', 'price' => 9000, 'items' => ['3 hours session', '150 edited photos', 'Location scout']],
+                ['name' => 'Romantic Wedding Package', 'price' => 28000, 'duration_minutes' => 600, 'items' => ['10 hours coverage', '350+ photos', 'Candid + posed blend', 'Album & slideshow']],
+                ['name' => 'Prenup Escape', 'price' => 12000, 'duration_minutes' => 240, 'items' => ['4 hours outdoor shoot', '200 images', 'Album included']],
+                ['name' => 'Family & Milestone Session', 'price' => 9000, 'duration_minutes' => 180, 'items' => ['3 hours session', '150 edited photos', 'Location scout']],
             ],
             'addons' => [
                 ['name' => 'Prenup Videography', 'price' => 4500],
@@ -315,9 +315,9 @@ class DemoSeeder extends Seeder
             'years' => 8,
             'team_size' => 6,
             'packages' => [
-                ['name' => 'Luxury Wedding Experience', 'price' => 45000, 'items' => ['12 hours dual coverage', '500+ photos', '4K cinema video', 'Premium album', 'Pre-wedding session']],
-                ['name' => 'Corporate Executive Package', 'price' => 20000, 'items' => ['Full day coverage', '300+ photos', 'Event highlights', 'Digital deliverables']],
-                ['name' => 'Editorial & Commercial', 'price' => 25000, 'items' => ['3 day shoot', 'Concept development', '400+ images', 'Professional retouching']],
+                ['name' => 'Luxury Wedding Experience', 'price' => 45000, 'duration_minutes' => 720, 'items' => ['12 hours dual coverage', '500+ photos', '4K cinema video', 'Premium album', 'Pre-wedding session']],
+                ['name' => 'Corporate Executive Package', 'price' => 20000, 'duration_minutes' => 480, 'items' => ['Full day coverage', '300+ photos', 'Event highlights', 'Digital deliverables']],
+                ['name' => 'Editorial & Commercial', 'price' => 25000, 'duration_minutes' => 480, 'items' => ['3 day shoot', 'Concept development', '400+ images', 'Professional retouching']],
             ],
             'addons' => [
                 ['name' => 'Second Unit/Videography', 'price' => 6000],
@@ -571,6 +571,14 @@ class DemoSeeder extends Seeder
                 'name' => $pkgData['name'],
                 'included_items' => $pkgData['items'],
                 'price' => $pkgData['price'],
+                // Explicit per-package duration so it matches what the
+                // 'items' text describes (e.g. "3 hours coverage" -> 180).
+                // Without this, every seeded package silently fell back to
+                // PackageFactory's default of 480 regardless of what its
+                // inclusions said — duration_minutes stays the single
+                // source of truth for scheduling either way; this just
+                // makes the seeded value consistent with the display text.
+                'duration_minutes' => $pkgData['duration_minutes'] ?? 480,
                 'status' => PackageStatus::Published,
             ]);
         }

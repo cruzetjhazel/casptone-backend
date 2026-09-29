@@ -27,17 +27,22 @@ class Booking extends Model
     protected $fillable = [
         'client_id', 'photographer_id', 'package_id',
         'is_custom_package', 'package_snapshot', 'custom_package_snapshot', 'add_ons_snapshot',
-        'event_type', 'custom_event_type', 'event_date', 'start_time', 'end_time',
+        'event_type', 'custom_event_type', 'event_date', 'start_time', 'end_time', 'duration_minutes',
         'location_type', 'province_id', 'city_municipality_id', 'barangay_id',
         'event_address', 'guest_count', 'special_requests',
         'subtotal', 'total_price', 'status', 'hold_expires_at',
         'rejection_reason', 'cancellation_reason', 'cancellation_requested_at',
         'cancellation_decision', 'cancellation_decided_at', 'superseded_by_booking_id',
+        'non_completion_reason', 'non_completion_reported_at',
+        'non_completion_reported_by', 'non_completion_dispute_deadline_at',
+        'non_completion_disputed_at', 'non_completion_dispute_reason',
+        'non_completion_review_status', 'non_completion_admin_notes', 'non_completion_resolved_at',
         'requested_event_date', 'requested_start_time', 'reschedule_requested_at',
         'reschedule_decision', 'reschedule_decided_at',
         'modification_type', 'modification_reason', 'modification_requested_at',
         'payment_plan', 'payment_status',
         'service_status', 'service_status_updated_at',
+        'custom_hours',
     ];
 
     protected function casts(): array
@@ -57,6 +62,10 @@ class Booking extends Model
             'hold_expires_at' => 'datetime',
             'cancellation_requested_at' => 'datetime',
             'cancellation_decided_at' => 'datetime',
+            'non_completion_reported_at' => 'datetime',
+            'non_completion_dispute_deadline_at' => 'datetime',
+            'non_completion_disputed_at' => 'datetime',
+            'non_completion_resolved_at' => 'datetime',
             'requested_event_date' => 'date:Y-m-d',
             'reschedule_requested_at' => 'datetime',
             'reschedule_decision' => CancellationDecision::class,
@@ -119,6 +128,73 @@ class Booking extends Model
     public function review(): HasOne
     {
         return $this->hasOne(Review::class);
+    }
+
+    public function extensions(): HasMany
+    {
+        return $this->hasMany(BookingExtension::class);
+    }
+
+    public function schedules(): HasMany
+    {
+        return $this->hasMany(BookingSchedule::class)->orderBy('sort_order');
+    }
+
+    /**
+     * Schedule 1 (this booking's own event_date/start_time/end_time —
+     * unchanged, computed by CreateBookingAction exactly as before) plus
+     * every additional BookingSchedule row, as one ordered collection.
+     * BookingResource, the extension-target picker, and anything else
+     * that needs "every occupied period for this booking" reads through
+     * this rather than special-casing where Schedule 1's columns live.
+     */
+    public function allSchedules(): \Illuminate\Support\Collection
+    {
+        $primary = new BookingSchedule([
+            'label' => $this->custom_event_type ?: ucfirst(str_replace('_', ' ', $this->event_type ?? '')),
+            'event_date' => $this->event_date,
+            'start_time' => $this->start_time,
+            'end_time' => $this->end_time,
+            'duration_minutes' => $this->duration_minutes,
+        ]);
+        // id intentionally stays null (unsaved model) — BookingScheduleResource
+        // reads a null id as "this is the primary schedule, not a
+        // booking_schedules row."
+
+        return collect([$primary])->concat($this->schedules);
+    }
+
+    /**
+     * Extension requests are only meaningful for sliding-hours custom
+     * bookings (custom_hours is set — see CreateBookingAction::
+     * resolveCustomPackage) and only once the booking is actually
+     * Confirmed. Fixed-package and flat-base-fee custom bookings have no
+     * hourly rate to bill additional coverage against.
+     */
+    public function isEligibleForExtensionRequest(): bool
+    {
+        return $this->status === BookingStatus::Confirmed
+            && $this->is_custom_package
+            && $this->custom_hours !== null;
+    }
+
+    public function hasPendingExtensionRequest(): bool
+    {
+        return $this->extensions()->where('status', \App\Enums\BookingExtensionStatus::Pending)->exists();
+    }
+
+    /**
+     * Sum of every APPROVED extension's additional_charge — kept separate
+     * from total_price so the original booking total is never silently
+     * increased (see CreateBookingAction / spec). Callers that need "what
+     * the client owes altogether" should add this to total_price
+     * themselves rather than this method folding it in.
+     */
+    public function approvedExtensionCharge(): float
+    {
+        return (float) $this->extensions()
+            ->where('status', \App\Enums\BookingExtensionStatus::Approved)
+            ->sum('additional_charge');
     }
 
     public function isHoldExpired(): bool
@@ -246,5 +322,30 @@ class Booking extends Model
             ->where('start_time', '<', $this->end_time)
             ->where('end_time', '>', $this->start_time)
             ->with('client');
+    }
+        /** Completed, or reported as a no-show (and not overturned by admin). */
+    public function isReviewable(): bool
+    {
+        return $this->status === BookingStatus::Completed
+            || ($this->status === BookingStatus::Cancelled && $this->non_completion_reason !== null);
+    }
+
+    /** null | open | disputed | upheld | final */
+    public function nonCompletionState(): ?string
+    {
+        if (! $this->non_completion_reason) {
+            return null;
+        }
+        if ($this->non_completion_review_status === 'pending_admin') {
+            return 'disputed';
+        }
+        if ($this->non_completion_review_status === 'upheld') {
+            return 'upheld';
+        }
+        if ($this->non_completion_dispute_deadline_at && $this->non_completion_dispute_deadline_at->isFuture()) {
+            return 'open';
+        }
+
+        return 'final';
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PackageScheduleMode;
 use App\Enums\PackageStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,7 @@ class Package extends Model
 
     protected $fillable = [
         'user_id', 'name', 'description', 'included_items',
-        'price', 'duration_minutes', 'buffer_minutes', 'status',
+        'price', 'duration_minutes', 'buffer_minutes', 'schedule_mode', 'allows_multiple_sessions', 'max_sessions', 'status',
     ];
 
     protected function casts(): array
@@ -23,6 +24,9 @@ class Package extends Model
             'price' => 'decimal:2',
             'duration_minutes' => 'integer',
             'buffer_minutes' => 'integer',
+            'schedule_mode' => PackageScheduleMode::class,
+            'allows_multiple_sessions' => 'boolean',
+            'max_sessions' => 'integer',
             'status' => PackageStatus::class,
         ];
     }
