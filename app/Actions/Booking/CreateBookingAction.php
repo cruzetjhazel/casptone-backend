@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
+
 class CreateBookingAction
 {
     public function __construct(
@@ -231,7 +232,7 @@ class CreateBookingAction
                 'platform_fee' => $platformFee,
                 'total_price' => $totalPrice,
                 'status' => BookingStatus::Pending,
-                // Photographer has 24h (never past the event start) to
+                // Photographer has 48h (never past the event start) to
                 // approve/reject, else ExpireStaleBookingHoldsAction expires it.
                 'hold_expires_at' => $this->deadlines->decisionDeadlineForRequest(
                     $data['event_date'], $data['start_time'], $additionalSchedules
@@ -285,7 +286,8 @@ class CreateBookingAction
         $snapshot = [
             'name' => $package->name,
             'description' => $package->description,
-            'price' => (string) $package->price,
+            'price' => (string) $this->fixedPackagePrice($package, $data),
+            'rate_type' => ($this->isOnLocation($data) && $package->outdoor_price !== null) ? 'outdoor' : 'studio',
             // Package information / pricing length. For an open-ended package
             // this is NOT used to reserve time.
             'duration_minutes' => $package->duration_minutes,
@@ -299,8 +301,22 @@ class CreateBookingAction
         return [
             $isOpen ? null : $package->duration_minutes,
             $isOpen ? 0 : (int) $package->buffer_minutes,
-            (float) $package->price, $package->id, $snapshot, null,
+            $this->fixedPackagePrice($package, $data), $package->id, $snapshot, null,
         ];
+    }
+
+    /** Anything other than "Studio" is priced at the photographer's outdoor / on-location rate. */
+    protected function isOnLocation(array $data): bool
+    {
+        return ($data['location_type'] ?? BookingLocationType::Studio->value) !== BookingLocationType::Studio->value;
+    }
+
+    /** Fixed-package price for this booking's location (outdoor price if set, else the normal price). */
+    protected function fixedPackagePrice(\App\Models\Package $package, array $data): float
+    {
+        return ($this->isOnLocation($data) && $package->outdoor_price !== null)
+            ? (float) $package->outdoor_price
+            : (float) $package->price;
     }
 
     protected function resolveCustomPackage(User $photographer, array $data): array
@@ -458,7 +474,9 @@ class CreateBookingAction
                 $sessionHours[] = $h;
             }
 
-            $rate = (float) $config->hourly_rate;
+            $rate = ($this->isOnLocation($data) && $config->outdoor_hourly_rate !== null)
+                ? (float) $config->outdoor_hourly_rate
+                : (float) $config->hourly_rate;
             $baseFee = (float) ($config->base_fee ?? 0);
             $sessionCharges = [];
 
@@ -485,7 +503,8 @@ class CreateBookingAction
             $subtotal = array_sum($sessionCharges) + (float) $flatComponents->sum('price_addition');
 
             $snapshot = [
-                'hourly_rate' => (string) $config->hourly_rate,
+                'hourly_rate' => (string) $rate,
+                'rate_type' => ($this->isOnLocation($data) && $config->outdoor_hourly_rate !== null) ? 'outdoor' : 'studio',
                 'base_fee' => $baseHours !== null ? (string) ($config->base_fee ?? 0) : null,
                 'base_hours' => $baseHours,
                 'hours' => $hours,

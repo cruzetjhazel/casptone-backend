@@ -699,13 +699,37 @@ class DemoSeeder extends Seeder
      */
     private function createFavorites(Collection $clients, Collection $approved): void
     {
+        // Every published package across the seeded photographers.
+        $publishedPackages = $approved
+            ->flatMap(fn ($p) => $p['packages'])
+            ->filter(fn ($pkg) => $pkg->status === PackageStatus::Published)
+            ->values();
+
+        $n = 0;
         foreach ($clients as $client) {
-            $picks = $approved->random(min(fake()->numberBetween(0, 3), $approved->count()));
+            // The first few clients always get favorites so the Favorites page is never empty in a demo.
+            $guaranteed = $n < 3;
+            $n++;
+
+            $photographerCount = $guaranteed ? fake()->numberBetween(2, 4) : fake()->numberBetween(0, 3);
+            $picks = $photographerCount > 0
+                ? $approved->random(min($photographerCount, $approved->count()))
+                : collect();
             foreach ($picks as $photographer) {
                 FavoritePhotographer::firstOrCreate([
                     'client_id' => $client->id,
                     'photographer_id' => $photographer['user']->id,
                 ]);
+            }
+
+            $packageCount = $guaranteed ? fake()->numberBetween(2, 4) : fake()->numberBetween(0, 2);
+            if ($packageCount > 0 && $publishedPackages->isNotEmpty()) {
+                foreach ($publishedPackages->random(min($packageCount, $publishedPackages->count())) as $package) {
+                    \App\Models\FavoritePackage::firstOrCreate([
+                        'client_id' => $client->id,
+                        'package_id' => $package->id,
+                    ]);
+                }
             }
         }
     }

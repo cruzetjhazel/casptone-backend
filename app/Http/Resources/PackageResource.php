@@ -15,6 +15,7 @@ class PackageResource extends JsonResource
             'description' => $this->description,
             'included_items' => $this->included_items,
             'price' => $this->price,
+            'outdoor_price' => $this->outdoor_price,
             'duration_minutes' => $this->duration_minutes,
             'buffer_minutes' => $this->buffer_minutes,
             'schedule_mode' => $this->schedule_mode?->value ?? 'timed',

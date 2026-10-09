@@ -21,6 +21,8 @@ class PackageRequest extends FormRequest
             'included_items.*.name' => ['required', 'string', 'max:255'],
             'included_items.*.detail' => ['sometimes', 'nullable', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
+            // Optional different price when the booking is NOT at the studio.
+            'outdoor_price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             // Nullable: a fixed package can now be "duration TBD" — e.g. a
             // multi-schedule package (prenup/prep/ceremony/reception) whose
             // individual schedule lengths aren't fixed in advance. See

@@ -68,7 +68,7 @@ class PhotographerShowcaseSeeder extends Seeder
             'shooting_types' => ['indoor', 'outdoor'],
             'price_min' => 12000,
             'price_max' => 45000,
-            'coverage_area' => 'sorsogon_wide',
+            'coverage_area' => 'travel_outside_bicol',
             'facebook' => 'https://facebook.com/hhproduction.studio',
             'instagram' => 'https://instagram.com/hhproduction.studio',
             'website' => null,
@@ -94,7 +94,7 @@ class PhotographerShowcaseSeeder extends Seeder
             'shooting_types' => ['indoor', 'outdoor'],
             'price_min' => 8000,
             'price_max' => 30000,
-            'coverage_area' => 'bulan_only',
+            'coverage_area' => 'anywhere_sorsogon',
             'facebook' => 'https://facebook.com/kapstudio.ph',
             'instagram' => 'https://instagram.com/kapstudio.ph',
             'website' => null,
@@ -120,7 +120,7 @@ class PhotographerShowcaseSeeder extends Seeder
             'shooting_types' => ['indoor', 'outdoor'],
             'price_min' => 9000,
             'price_max' => 32000,
-            'coverage_area' => 'sorsogon_wide',
+            'coverage_area' => 'travel_outside_sorsogon',
             'facebook' => 'https://facebook.com/amarasstudio',
             'instagram' => null,
             'website' => 'https://amarasstudio.test',
@@ -172,7 +172,7 @@ class PhotographerShowcaseSeeder extends Seeder
             'shooting_types' => ['indoor', 'outdoor'],
             'price_min' => 3500,
             'price_max' => 15000,
-            'coverage_area' => 'sorsogon_wide',
+            'coverage_area' => 'bulan_nearby',
             'facebook' => 'https://facebook.com/joesolphotography',
             'instagram' => null,
             'website' => null,
@@ -267,8 +267,12 @@ class PhotographerShowcaseSeeder extends Seeder
             );
 
             // Seed profile and cover images (load from seeders/images/ or generate)
-            $profilePhotoPath = $this->seedImage($data['slug'], 'logo', 'profile', $i);
-            $coverPhotoPath = $this->seedImage($data['slug'], 'cover', 'cover', $i);
+                $existingProfile = PhotographerProfile::where('user_id', $user->id)->first();
+
+                $profilePhotoPath = $this->seedImage($data['slug'], 'logo', 'profile', $i)
+                    ?? $existingProfile?->profile_photo_path;
+                $coverPhotoPath = $this->seedImage($data['slug'], 'cover', 'cover', $i)
+                    ?? $existingProfile?->cover_photo_path;
 
             PhotographerProfile::updateOrCreate(
                 ['user_id' => $user->id],

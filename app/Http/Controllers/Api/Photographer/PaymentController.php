@@ -23,7 +23,7 @@ class PaymentController extends Controller
     {
         return $this->success(
             PaymentResource::collection(
-                $request->user()->paymentsAsPhotographer()->with('booking.client')->latest()->get()
+                $request->user()->paymentsAsPhotographer()->with(['booking.client', 'verifiedBy'])->latest()->get()
             )
         );
     }
@@ -40,16 +40,18 @@ class PaymentController extends Controller
 
     public function verify(ManuallyVerifyPaymentRequest $request, Payment $payment, ManuallyVerifyPaymentAction $action)
     {
-        $this->authorize('verify', $payment);
+                $this->authorize('verify', $payment);
+        abort_unless($request->user()->isPhotographer() && $payment->photographer_id === $request->user()->id, 403);
 
         $payment = $action->execute($payment, $request->user(), $request->validated('notes'));
 
-        return $this->success(new PaymentResource($payment), 'Payment manually verified. Booking is now confirmed.');
+        return $this->success(new PaymentResource($payment), 'Payment verified. Booking is now confirmed.');
     }
 
     public function reject(RejectPaymentRequest $request, Payment $payment, RejectPaymentAction $action)
     {
-        $this->authorize('reject', $payment);
+                $this->authorize('reject', $payment);
+        abort_unless($request->user()->isPhotographer() && $payment->photographer_id === $request->user()->id, 403);
 
         $payment = $action->execute($payment, $request->user(), $request->validated('notes'));
 

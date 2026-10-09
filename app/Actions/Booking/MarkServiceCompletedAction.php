@@ -30,6 +30,20 @@ class MarkServiceCompletedAction
             ]);
         }
 
+        if ($booking->hasPendingNoShowReport()) {
+            throw ValidationException::withMessages([
+                'status' => ['A no-show report on this booking is waiting for admin review. It cannot be marked Completed until it is resolved.'],
+            ]);
+        }
+
+        $blockedUntil = $booking->completionBlockedUntil();
+
+        if ($blockedUntil !== null) {
+            throw ValidationException::withMessages([
+                'status' => ['This booking can be marked Completed after '.$blockedUntil->format('M j, Y g:i A').', once the client\'s 48-hour window to report a problem has ended.'],
+            ]);
+        }
+
         $booking->status = BookingStatus::Completed;
         $booking->save();
 

@@ -48,7 +48,7 @@ class TestClientSeeder extends Seeder
             ClientProfile::factory()->raw()
         );
 
-        $adopted = $this->adoptVariedBookings($client);
+        $adopted = 0; // BookingStatesShowcaseSeeder + ScenarioMatrixSeeder already give one booking per state
         $favorites = $this->addFavorites($client);
 
         $this->command->info("Seeded test client: {$email} / {$password} ({$adopted} bookings from other photographers, {$favorites} favorites)");

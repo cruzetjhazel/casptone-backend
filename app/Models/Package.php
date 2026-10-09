@@ -14,7 +14,7 @@ class Package extends Model
 
     protected $fillable = [
         'user_id', 'name', 'description', 'included_items',
-        'price', 'duration_minutes', 'buffer_minutes', 'schedule_mode', 'allows_multiple_sessions', 'max_sessions', 'status',
+        'price', 'outdoor_price', 'duration_minutes', 'buffer_minutes', 'schedule_mode', 'allows_multiple_sessions', 'max_sessions', 'status',
     ];
 
     protected function casts(): array
@@ -22,6 +22,7 @@ class Package extends Model
         return [
             'included_items' => 'array',
             'price' => 'decimal:2',
+            'outdoor_price' => 'decimal:2',
             'duration_minutes' => 'integer',
             'buffer_minutes' => 'integer',
             'schedule_mode' => PackageScheduleMode::class,

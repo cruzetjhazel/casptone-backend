@@ -1,6 +1,5 @@
 <?php
 
-use App\Actions\Booking\ExpireStaleBookingHoldsAction;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -12,10 +11,7 @@ Artisan::command('inspire', function () {
 
 Schedule::command('archive:purge --days=90')->daily();
 
-Schedule::call(fn () => app(ExpireStaleBookingHoldsAction::class)->execute())
-    ->everyFifteenMinutes()
-    ->name('expire-stale-booking-holds')
-    ->withoutOverlapping();
+
 
 // Now that config/sanctum.php sets a real token expiration, this clears out
 // the expired rows instead of letting personal_access_tokens grow forever.
@@ -23,3 +19,8 @@ Schedule::call(fn () => app(ExpireStaleBookingHoldsAction::class)->execute())
 // pruning — this is just housekeeping, not itself a security control.
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 Schedule::command('bookings:expire-stale')->everyMinute()->withoutOverlapping();
+
+Schedule::call(fn () => app(RunServiceProgressTransitionsAction::class)->execute())
+    ->everyMinute()
+    ->name('run-service-progress-transitions')
+    ->withoutOverlapping();

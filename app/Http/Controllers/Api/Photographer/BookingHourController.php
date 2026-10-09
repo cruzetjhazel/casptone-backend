@@ -55,6 +55,13 @@ class BookingHourController extends Controller
         return $this->success(null, 'Booking hours removed.');
     }
 
+    public function interval(Request $request)
+    {
+        $this->authorize('viewAny', BookingHour::class);
+
+        return $this->success(['slot_interval_minutes' => $request->user()->slot_interval_minutes ?? 60]);
+    }
+
     public function updateInterval(Request $request, UpdateSlotIntervalAction $action)
     {
         $this->authorize('update', BookingHour::class);

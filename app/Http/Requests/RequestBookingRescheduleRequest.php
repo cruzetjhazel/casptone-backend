@@ -17,6 +17,8 @@ class RequestBookingRescheduleRequest extends FormRequest
             'event_date' => ['required', 'date', 'after_or_equal:today'],
             'start_time' => ['required', 'date_format:H:i'],
             'reason' => ['required', 'string', 'max:1000'],
+            // standard = normal reschedule; the others are the exceptional postponements.
+            'type' => ['sometimes', 'in:standard,weather,venue,agreed'],
         ];
     }
 }

@@ -21,6 +21,12 @@ class RejectBookingAction
             ]);
         }
 
+        if ($booking->isHoldExpired()) {
+            throw ValidationException::withMessages([
+                'status' => ['The response window for this request has passed, so it can no longer be declined.'],
+            ]);
+        }
+
         $booking->update([
             'status' => BookingStatus::Cancelled,
             'rejection_reason' => $reason,

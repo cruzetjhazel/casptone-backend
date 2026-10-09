@@ -66,7 +66,8 @@ class RequestBookingExtensionAction
             ]);
         }
 
-        $hourlyRate = (float) $config->hourly_rate;
+        // Use the rate this booking was actually priced at (studio or outdoor).
+        $hourlyRate = (float) ($booking->custom_package_snapshot['hourly_rate'] ?? $config->hourly_rate);
 
         $extension = BookingExtension::create([
             'booking_id' => $booking->id,

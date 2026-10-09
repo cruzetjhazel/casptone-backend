@@ -19,7 +19,7 @@ class PaymentController extends Controller
     public function index(Request $request)
     {
         return $this->success(
-            PaymentResource::collection($request->user()->paymentsAsClient()->latest()->get())
+            PaymentResource::collection($request->user()->paymentsAsClient()->with(['booking.client', 'verifiedBy'])->latest()->get())
         );
     }
 
@@ -65,9 +65,7 @@ class PaymentController extends Controller
 
         $payment = $action->execute($booking, $request->validated());
 
-        $message = $payment->matching_status->value === 'matched'
-            ? 'Payment submitted and verified automatically. Booking is now confirmed.'
-            : 'Payment submitted. The reference could not be automatically matched — the photographer will review it.';
+        $message = 'Payment submitted. The photographer will check their GCash account and confirm it.';
 
         return $this->success(new PaymentResource($payment), $message, 201);
     }

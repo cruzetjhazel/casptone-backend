@@ -18,7 +18,7 @@ class SubmitReviewAction
     {
         if (! $booking->isReviewable()) {
             throw ValidationException::withMessages([
-                'booking_id' => ['You can only review a completed booking.'],
+                'booking_id' => ['This booking is not eligible for a review.'],
             ]);
         }
 

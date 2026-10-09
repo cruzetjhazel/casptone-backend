@@ -6,6 +6,8 @@ use App\Actions\ActivityLog\LogActivityAction;
 use App\Enums\BookingStatus;
 use App\Enums\CancellationDecision;
 use App\Models\Booking;
+use App\Notifications\Booking\BookingCancelledNotification;
+use App\Notifications\Booking\CancellationRequestRejectedNotification;
 use Illuminate\Validation\ValidationException;
 
 class DecideBookingCancellationAction
@@ -27,6 +29,8 @@ class DecideBookingCancellationAction
 
         if ($decision === CancellationDecision::Approved) {
             $booking->status = BookingStatus::Cancelled;
+            $booking->cancelled_by = 'client';
+            $booking->hold_expires_at = null;
         }
 
         $booking->save();
@@ -34,10 +38,10 @@ class DecideBookingCancellationAction
         $fresh = $booking->fresh();
 
         if ($decision === CancellationDecision::Approved) {
-            $fresh->client->notify(new \App\Notifications\Booking\BookingCancelledNotification($fresh));
-            $fresh->photographer->notify(new \App\Notifications\Booking\BookingCancelledNotification($fresh));
+            $fresh->client->notify(new BookingCancelledNotification($fresh));
+            $fresh->photographer->notify(new BookingCancelledNotification($fresh));
         } else {
-            $fresh->client->notify(new \App\Notifications\Booking\CancellationRequestRejectedNotification($fresh));
+            $fresh->client->notify(new CancellationRequestRejectedNotification($fresh));
         }
 
         $this->activityLogger->execute(
@@ -48,14 +52,9 @@ class DecideBookingCancellationAction
                 : 'booking.cancellation_rejected',
             description: $decision === CancellationDecision::Approved
                 ? "Approved cancellation for booking #{$fresh->id}"
-                : "Rejected cancellation request for booking #{$fresh->id}",
+                : "Declined cancellation request for booking #{$fresh->id}",
         );
 
         return $fresh;
     }
-        public function hasPendingRescheduleRequest(): bool
-    {
-        return $this->reschedule_requested_at !== null && $this->reschedule_decision === null;
-    }
-
 }

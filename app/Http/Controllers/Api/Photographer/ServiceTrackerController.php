@@ -25,6 +25,16 @@ class ServiceTrackerController extends Controller
         return $this->success(new BookingResource($booking), 'Service tracker updated.');
     }
 
+    /** "Confirm Shoot Completed": the only way to move Event Day -> Editing. */
+    public function confirmShoot(Booking $booking, UpdateServiceTrackerStatusAction $action)
+    {
+        $this->authorize('manageServiceTracker', $booking);
+
+        $booking = $action->execute($booking, ServiceTrackerStatus::Editing, true);
+
+        return $this->success(new BookingResource($booking), 'Shoot confirmed. The booking is now in Editing.');
+    }
+
     /**
      * Explicit photographer action: BookingStatus Confirmed -> Completed,
      * once the service tracker has reached Delivered. Reuses the same

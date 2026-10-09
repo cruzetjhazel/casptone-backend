@@ -23,6 +23,12 @@ class AcceptBookingAction
             ]);
         }
 
+        if ($booking->isHoldExpired()) {
+            throw ValidationException::withMessages([
+                'status' => ['The response window for this request has passed, so it can no longer be accepted.'],
+            ]);
+        }
+
         // Throws if the event is too close to collect a payment; nothing is saved then.
         $paymentDeadline = $this->deadlines->paymentDeadline($booking);
 

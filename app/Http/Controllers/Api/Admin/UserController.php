@@ -54,17 +54,31 @@ class UserController extends Controller
         abort_unless($request->user()->isAdministrator(), 403);
         abort_if($user->isAdministrator(), 403, 'Cannot suspend an administrator account.');
 
-        $user->update(['account_status' => 'suspended']);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
 
-        return $this->success(new UserManagementResource($user->fresh()), 'Account suspended.');
+        $user->account_status = 'suspended';
+        $user->suspension_reason = $data['reason'];
+        $user->suspended_at = now();
+        $user->save();
+
+        // Sign the user out everywhere right away.
+        $user->tokens()->delete();
+
+        return $this->success(new UserManagementResource($user->fresh(['photographerApplication'])), 'Account suspended.');
     }
 
     public function reactivate(User $user, Request $request)
     {
         abort_unless($request->user()->isAdministrator(), 403);
 
-        $user->update(['account_status' => 'active']);
+        $user->account_status = 'active';
+        $user->suspension_reason = null;
+        $user->suspended_at = null;
+        $user->deactivated_at = null;
+        $user->save();
 
-        return $this->success(new UserManagementResource($user->fresh()), 'Account reactivated.');
+        return $this->success(new UserManagementResource($user->fresh(['photographerApplication'])), 'Account reactivated.');
     }
 }

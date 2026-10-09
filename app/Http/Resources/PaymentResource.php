@@ -40,6 +40,7 @@ class PaymentResource extends JsonResource
             'notes' => $this->notes,
             'matching_status' => $this->matching_status->value,
             'verified_by' => $this->verified_by,
+            'verified_by_name' => $this->verifiedBy?->name,
             'verified_at' => $this->verified_at,
             'verification_action' => $this->verification_action,
             'verification_notes' => $this->verification_notes,

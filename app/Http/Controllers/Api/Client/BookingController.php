@@ -28,6 +28,8 @@ class BookingController extends Controller
 
     public function index(Request $request)
     {
+        app(\App\Actions\Booking\ExpireStaleBookingHoldsAction::class)->executeThrottled();
+
         return $this->success(
             BookingResource::collection($request->user()->bookingsAsClient()->latest()->get())
         );
@@ -46,7 +48,9 @@ class BookingController extends Controller
     {
         $this->authorize('view', $booking);
 
-        return $this->success(new BookingResource($booking));
+        app(\App\Actions\Booking\ExpireStaleBookingHoldsAction::class)->executeThrottled();
+
+        return $this->success(new BookingResource($booking->refresh()));
     }
 
     public function requestCancellation(RequestBookingCancellationRequest $request, Booking $booking, RequestBookingCancellationAction $action)
@@ -55,7 +59,10 @@ class BookingController extends Controller
 
         $booking = $action->execute($booking, $request->validated('reason'));
 
-        return $this->success(new BookingResource($booking), 'Cancellation requested.');
+        return $this->success(
+            new BookingResource($booking),
+            $booking->status === \App\Enums\BookingStatus::Cancelled ? 'Booking cancelled.' : 'Cancellation requested. The photographer will review it.'
+        );
     }
 
     public function reportNonCompletion(\App\Http\Requests\ReportBookingNonCompletionRequest $request, Booking $booking, \App\Actions\Booking\ReportBookingNonCompletionAction $action)
@@ -85,16 +92,29 @@ class BookingController extends Controller
     {
         $this->authorize('requestReschedule', $booking);
 
-        $booking = $action->execute($booking, $request->validated('event_date'), $request->validated('start_time'), $request->validated('reason'));
+        $booking = $action->execute($booking, $request->validated('event_date'), $request->validated('start_time'), $request->validated('reason'), $request->validated('type', 'standard'));
 
         return $this->success(new BookingResource($booking), 'Reschedule requested.');
+    }
+
+    /** Start times this booking could be moved to on a given date (what the client's time picker shows). */
+    public function rescheduleSlots(\Illuminate\Http\Request $request, Booking $booking, RequestBookingRescheduleAction $action)
+    {
+        $this->authorize('requestReschedule', $booking);
+
+        $request->validate(['date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today']]);
+
+        return $this->success([
+            'date' => $request->query('date'),
+            'start_times' => $action->availableSlots($booking, $request->query('date')),
+        ]);
     }
 
     public function requestModification(RequestBookingModificationRequest $request, Booking $booking, RequestBookingModificationAction $action)
     {
         $this->authorize('modify', $booking);
 
-        $booking = $action->execute($booking, $request->validated('type'), $request->validated('reason'));
+        $booking = $action->execute($booking, $request->validated('changes'), $request->validated('reason'));
 
         return $this->success(new BookingResource($booking), 'Modification request submitted.');
     }

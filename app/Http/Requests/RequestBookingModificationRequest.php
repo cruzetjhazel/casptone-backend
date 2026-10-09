@@ -14,7 +14,10 @@ class RequestBookingModificationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type' => ['required', 'string', 'max:100'],
+            'changes' => ['required', 'array', 'min:1'],
+            'changes.guest_count' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:5000'],
+            'changes.event_address' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'changes.special_requests' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'reason' => ['required', 'string', 'max:1000'],
         ];
     }

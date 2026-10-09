@@ -10,10 +10,12 @@ class NotificationController extends Controller
 {
     public function index(Request $request)
     {
+        $limit = min(max((int) $request->query('limit', 50), 1), 500);
+
         $notifications = $request->user()
             ->notifications()
             ->latest()
-            ->limit(50)
+            ->limit($limit)
             ->get()
             ->map(fn (DatabaseNotification $n) => $this->transform($n));
 

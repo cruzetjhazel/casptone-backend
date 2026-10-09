@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\AppealController;
+use App\Http\Controllers\Api\Admin\AppealController as AdminAppealController;
 use App\Http\Controllers\Api\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Admin\PhotographerApplicationController as AdminPhotographerApplicationController;
@@ -30,6 +32,7 @@ use App\Http\Controllers\Api\Photographer\PaymentReferenceController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Client\ProfileController as ClientProfileController;
+use App\Http\Controllers\Api\Client\FavoritePackageController;
 use App\Http\Controllers\Api\Client\FavoritePhotographerController;
 use App\Http\Controllers\Api\Photographer\ClientController;
 use App\Http\Controllers\Api\Photographer\ServiceTrackerController;
@@ -46,9 +49,14 @@ use App\Http\Controllers\Api\LocationController;
 
 
 Route::prefix('auth')->group(function () {
+    // Per-email failed-attempt limiting is handled inside AuthController::login.
+    // This is only a loose per-IP backstop.
+    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:30,1');
+
     Route::middleware('throttle:auth')->group(function () {
         Route::post('register-client', [AuthController::class, 'register']);
-        Route::post('login', [AuthController::class, 'login']);
+        Route::post('reactivate', [AuthController::class, 'reactivate']);
+        Route::post('appeal', [AppealController::class, 'store']);
     });
 
     // Already gated by a valid Sanctum token — no brute-force risk here,
@@ -96,6 +104,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('favorites', [FavoritePhotographerController::class, 'index']);
         Route::post('favorites/{user}', [FavoritePhotographerController::class, 'store']);
         Route::delete('favorites/{user}', [FavoritePhotographerController::class, 'destroy']);
+
+        Route::get('favorites/packages', [FavoritePackageController::class, 'index']);
+        Route::post('favorites/packages/{package}', [FavoritePackageController::class, 'store']);
+        Route::delete('favorites/packages/{package}', [FavoritePackageController::class, 'destroy']);
 
         Route::get('activity-logs', [ActivityLogController::class, 'mine']);
     });
@@ -178,9 +190,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('booking-hours', [BookingHourController::class, 'index']);
         Route::post('booking-hours', [BookingHourController::class, 'store']);
-        Route::patch('booking-hours/{bookingHour}', [BookingHourController::class, 'update']);
-        Route::delete('booking-hours/{bookingHour}', [BookingHourController::class, 'destroy']);
+        // Must come BEFORE the {bookingHour} route. Otherwise "interval" is read as an ID and the request returns 404,
+        // so the slot interval chosen on the photographer calendar was never saved.
+        Route::get('booking-hours/interval', [BookingHourController::class, 'interval']);
         Route::patch('booking-hours/interval', [BookingHourController::class, 'updateInterval']);
+        Route::patch('booking-hours/{bookingHour}', [BookingHourController::class, 'update'])->whereNumber('bookingHour');
+        Route::delete('booking-hours/{bookingHour}', [BookingHourController::class, 'destroy']);
     });
 });
 
@@ -193,6 +208,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings/{booking}/report-non-completion', [ClientBookingController::class, 'reportNonCompletion']);
         Route::post('bookings/{booking}/dispute-non-completion', [ClientBookingController::class, 'disputeNonCompletion']);
         Route::post('bookings/{booking}/reschedule', [ClientBookingController::class, 'requestReschedule']);
+        Route::get('bookings/{booking}/reschedule-slots', [ClientBookingController::class, 'rescheduleSlots']);
         Route::post('bookings/{booking}/request-modification', [ClientBookingController::class, 'requestModification']);
         Route::post('bookings/{booking}/extensions', [ClientBookingController::class, 'requestExtension']);
         Route::get('bookings/{booking}/payment-info', [ClientPaymentController::class, 'paymentInfo']);
@@ -213,9 +229,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings/{booking}/accommodate', [PhotographerBookingController::class, 'accommodate']);
         Route::post('bookings/{booking}/reschedule/approve', [PhotographerBookingController::class, 'approveReschedule']);
         Route::post('bookings/{booking}/reschedule/reject', [PhotographerBookingController::class, 'rejectReschedule']);
+        Route::post('bookings/{booking}/modification/approve', [PhotographerBookingController::class, 'approveModification']);
+        Route::post('bookings/{booking}/modification/reject', [PhotographerBookingController::class, 'rejectModification']);
+        Route::post('bookings/{booking}/cancel', [PhotographerBookingController::class, 'cancel']);
         Route::post('bookings/{booking}/extensions/{extension}/approve', [PhotographerBookingController::class, 'approveExtension']);
         Route::post('bookings/{booking}/extensions/{extension}/decline', [PhotographerBookingController::class, 'declineExtension']);
         Route::patch('bookings/{booking}/service-tracker', [ServiceTrackerController::class, 'update']);
+        Route::post('bookings/{booking}/confirm-shoot', [ServiceTrackerController::class, 'confirmShoot']);
         Route::post('bookings/{booking}/complete', [ServiceTrackerController::class, 'complete']);
 
         Route::get('payment-config', [PaymentConfigController::class, 'show']);
@@ -249,6 +269,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('{user}', [AdminUserController::class, 'show']);
         Route::post('{user}/suspend', [AdminUserController::class, 'suspend']);
         Route::post('{user}/reactivate', [AdminUserController::class, 'reactivate']);
+    });
+
+    Route::prefix('admin/appeals')->group(function () {
+        Route::get('/', [AdminAppealController::class, 'index']);
+        Route::patch('{appeal}/decide', [AdminAppealController::class, 'decide']);
     });
 
     Route::prefix('admin/reports')->group(function () {

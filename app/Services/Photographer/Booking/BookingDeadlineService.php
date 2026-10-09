@@ -8,8 +8,11 @@ use Illuminate\Validation\ValidationException;
 
 class BookingDeadlineService
 {
-    /** Photographer has this long to approve/reject; client has this long to pay. */
-    public const WINDOW_HOURS = 24;
+    /** Photographer has this long to approve/reject a new request. Keep in sync with the "48 hours" copy in the client booking pages. */
+    public const DECISION_WINDOW_HOURS = 48;
+
+    /** Client has this long to pay after the request is accepted. */
+    public const PAYMENT_WINDOW_HOURS = 24;
 
     /** An unpaid booking must be settled at least this long before the first session starts. */
     public const PAYMENT_CUTOFF_HOURS = 3;
@@ -35,7 +38,7 @@ class BookingDeadlineService
             ->sortBy(fn (Carbon $c) => $c->timestamp)
             ->first();
 
-        $deadline = now()->addHours(self::WINDOW_HOURS);
+        $deadline = now()->addHours(self::DECISION_WINDOW_HOURS);
 
         return $deadline->lessThan($first) ? $deadline : $first;
     }
@@ -49,7 +52,7 @@ class BookingDeadlineService
     public function paymentDeadline(Booking $booking): Carbon
     {
         $now = now();
-        $deadline = $now->copy()->addHours(self::WINDOW_HOURS);
+        $deadline = $now->copy()->addHours(self::PAYMENT_WINDOW_HOURS);
         $cutoff = $this->firstSessionStart($booking)->subHours(self::PAYMENT_CUTOFF_HOURS);
 
         if ($cutoff->lessThan($deadline)) {
@@ -58,7 +61,7 @@ class BookingDeadlineService
 
         if ($deadline->lessThan($now->copy()->addMinutes(self::MIN_PAYMENT_WINDOW_MINUTES))) {
             throw ValidationException::withMessages([
-                'booking' => ['This event starts too soon to collect a reservation payment. Reject the request or arrange it directly with the client.'],
+                'booking' => ['This event starts too soon to collect a reservation payment. Decline the request or arrange it directly with the client.'],
             ]);
         }
 

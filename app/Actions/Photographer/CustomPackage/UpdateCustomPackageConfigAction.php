@@ -39,6 +39,7 @@ class UpdateCustomPackageConfigAction
             'base_fee' => $model === 'fixed' ? $keep('base_fee') : null,
             'base_hours' => null,
             'hourly_rate' => $model === 'hourly' ? $keep('hourly_rate') : null,
+            'outdoor_hourly_rate' => $model === 'hourly' ? $keep('outdoor_hourly_rate') : null,
             'min_hours' => $model === 'hourly' ? $keep('min_hours') : null,
             'max_hours' => $model === 'hourly' ? $keep('max_hours') : null,
             'unit_rate' => $isUnit ? $keep('unit_rate') : null,

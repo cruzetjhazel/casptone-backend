@@ -18,6 +18,20 @@ class ExpireStaleBookingHoldsAction
         return $this->expireUndecidedRequests() + $this->expireUnpaidApprovals();
     }
 
+    /**
+     * Same as execute(), but runs at most once every 15 seconds. Called when
+     * bookings are read, so a missed deadline is applied even when the
+     * scheduler is not running (local XAMPP, a stopped cron, etc.).
+     */
+    public function executeThrottled(): int
+    {
+        if (! \Illuminate\Support\Facades\Cache::add('bookings:expire-stale:throttle', 1, 15)) {
+            return 0;
+        }
+
+        return $this->execute();
+    }
+
     /** Photographer neither approved nor rejected within the window (or the event already started). */
     protected function expireUndecidedRequests(): int
     {

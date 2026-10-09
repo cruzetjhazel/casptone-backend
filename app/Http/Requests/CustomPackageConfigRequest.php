@@ -21,6 +21,7 @@ class CustomPackageConfigRequest extends FormRequest
             'base_fee' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'buffer_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:480'],
             'hourly_rate' => ['sometimes', 'nullable', 'numeric', 'min:0.01'],
+            'outdoor_hourly_rate' => ['sometimes', 'nullable', 'numeric', 'min:0.01'],
             'base_hours' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:24'],
             'min_hours' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:24'],
             'max_hours' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:24', 'gte:min_hours'],

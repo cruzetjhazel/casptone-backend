@@ -145,7 +145,7 @@ class AvailabilityService
      *
      * @return string[] "HH:mm" values, in the photographer's configured step
      */
-    public function getAvailableStartTimes(User $photographer, string $date, int $durationMinutes): array
+    public function getAvailableStartTimes(User $photographer, string $date, int $durationMinutes, ?int $excludeBookingId = null): array
     {
         $stepMinutes = $this->slotStepMinutes($photographer);
         $carbonDate = Carbon::parse($date);
@@ -171,11 +171,15 @@ class AvailabilityService
             ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
             ->whereIn('payment_status', self::BLOCKING_PAYMENT_STATUSES)
             ->where('event_date', $date)
+            ->when($excludeBookingId, fn ($q) => $q->where('id', '!=', $excludeBookingId))
             ->get();
 
         // See getMonthSummary()'s equivalent merge — other bookings'
         // additional schedule entries for this same date must block it too.
-        $bookings = $bookings->concat($this->additionalSchedulesByDate($photographer, $date, $date)->get($date, collect()));
+        $bookings = $bookings->concat(
+            $this->additionalSchedulesByDate($photographer, $date, $date)->get($date, collect())
+                ->reject(fn ($s) => $excludeBookingId !== null && (int) $s->booking_id === $excludeBookingId)
+        );
 
         $periods = $this->resolvePeriods(
             $date,
@@ -186,6 +190,22 @@ class AvailabilityService
         );
 
         return $this->availableStartTimes($date, $periods, $blocks, $bookings, $durationMinutes, $stepMinutes);
+    }
+
+    /** Buffer saved with the booking (fixed package or custom package snapshot). */
+    private function bufferMinutesFor($booking): int
+    {
+        $parent = $booking instanceof BookingSchedule ? $booking->booking : $booking;
+        if (! $parent) {
+            return 0;
+        }
+
+        $snapshot = $parent->is_custom_package ? $parent->custom_package_snapshot : $parent->package_snapshot;
+        if (is_string($snapshot)) {
+            $snapshot = json_decode($snapshot, true);
+        }
+
+        return (int) (((array) $snapshot)['buffer_minutes'] ?? 0);
     }
 
     private function slotStepMinutes(User $photographer): int
@@ -211,6 +231,7 @@ class AvailabilityService
                 ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
                 ->whereIn('payment_status', self::BLOCKING_PAYMENT_STATUSES)
             )
+            ->with('booking')
             ->get()
             ->groupBy(fn (BookingSchedule $s) => $s->event_date->format('Y-m-d'));
     }
@@ -338,6 +359,11 @@ class AvailabilityService
             $bookingEnd = $booking->end_time
                 ? Carbon::parse("{$bookingDateStr} {$booking->end_time}")
                 : $bookingStart->copy()->addMinutes($stepMinutes);
+            // Keep the photographer's buffer AFTER an existing booking clear too.
+            // (end_time is coverage only; the buffer lives in the booking's snapshot.)
+            if ($booking->end_time) {
+                $bookingEnd->addMinutes($this->bufferMinutesFor($booking));
+            }
             $busyRanges[] = [$bookingStart, $bookingEnd];
         }
 
@@ -362,7 +388,8 @@ class AvailabilityService
                 }
 
                 $formatted = $cursor->format('H:i');
-                if (! $overlaps && ! in_array($formatted, $slots, true)) {
+                // Never offer a start time that has already passed (matters for today's date).
+                if (! $overlaps && $cursor->gt(Carbon::now()) && ! in_array($formatted, $slots, true)) {
                     $slots[] = $formatted;
                 }
 

@@ -27,7 +27,14 @@ class AdminSeeder extends Seeder
             $existing->forceFill([
                 'name' => $name,
                 'email' => $email,
-            ])->save();
+                'account_status' => \App\Enums\AccountStatus::Active,
+            ]);
+
+            if (env('ADMIN_PASSWORD')) {
+                $existing->password = \Illuminate\Support\Facades\Hash::make(env('ADMIN_PASSWORD'));
+            }
+
+            $existing->save();
 
             $this->command->info("Normalized administrator: {$email}");
             return;

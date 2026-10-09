@@ -22,7 +22,10 @@ class DisputeBookingNonCompletionAction
 
     public function execute(Booking $booking, User $disputer, string $reason): Booking
     {
-        if ($booking->status !== BookingStatus::Cancelled || ! $booking->non_completion_reason || ! $booking->non_completion_dispute_deadline_at) {
+        if ($booking->status !== BookingStatus::Confirmed
+            || ! $booking->non_completion_reason
+            || ! $booking->non_completion_dispute_deadline_at
+            || $booking->non_completion_review_status !== 'pending_admin') {
             throw ValidationException::withMessages(['status' => ['This booking has no no-show report to dispute.']]);
         }
 
@@ -51,14 +54,16 @@ class DisputeBookingNonCompletionAction
             'reference_id' => (string) $booking->id,
             'reason' => 'No-show dispute',
             'severity' => ReportSeverity::Medium,
-            'details' => "Disputed a {$booking->non_completion_reason} report on booking #{$booking->id}: {$reason}",
+            'details' => "Disputed a {$booking->non_completion_reason->value} report on booking #{$booking->id}: {$reason}",
             'requested_action' => ReportRequestedAction::Investigate,
             'status' => ReportStatus::Submitted,
         ]);
 
         $fresh = $booking->fresh();
         $reporter = User::find($fresh->non_completion_reported_by);
-        $reporter?->notify(new NonCompletionNotification($fresh, 'disputed'));
+        User::query()->get()
+            ->filter(fn (User $u) => $u->isAdministrator())
+            ->each(fn (User $admin) => $admin->notify(new NonCompletionNotification($fresh, 'admin_disputed')));
 
         $this->activityLogger->execute(
             causer: $disputer,

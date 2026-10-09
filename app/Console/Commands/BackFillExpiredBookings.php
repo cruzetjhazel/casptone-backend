@@ -8,7 +8,7 @@ use App\Models\Booking;
 use Illuminate\Console\Command;
 
 /**
- * One-off backfill for bookings that timed out (24h no photographer
+ * One-off backfill for bookings that timed out (48h no photographer
  * decision, or unpaid acceptance) BEFORE ExpireStaleBookingHoldsAction
  * existed. Those got stamped status=Cancelled by whatever legacy logic
  * handled timeouts back then. This command finds them and flips them to

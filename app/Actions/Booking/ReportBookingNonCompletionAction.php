@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 
 class ReportBookingNonCompletionAction
 {
-    public const DISPUTE_WINDOW_HOURS = 48;
+    public const DISPUTE_WINDOW_HOURS = 16;
 
     public function __construct(protected LogActivityAction $activityLogger)
     {
@@ -26,27 +26,47 @@ class ReportBookingNonCompletionAction
             ]);
         }
 
-        // An admin already overturned a report on this booking; don't allow re-filing.
+        if ($booking->non_completion_reason) {
+            throw ValidationException::withMessages([
+                'status' => ['This booking already has a no-show report.'],
+            ]);
+        }
         if ($booking->non_completion_review_status === 'overturned') {
             throw ValidationException::withMessages([
                 'status' => ['A previous report on this booking was reviewed and overturned by an admin.'],
             ]);
         }
 
-        // Only reportable once the service was actually due to happen, and
-        // only before it has meaningfully progressed — a tracker already at
-        // Editing/Delivered/Completed means the photographer clearly showed up.
-        if (in_array($booking->service_status, [ServiceTrackerStatus::Editing, ServiceTrackerStatus::Delivered], true)
-            || $booking->status === BookingStatus::Completed) {
+        $isClientReporter = $reporter->id === $booking->client_id;
+
+        $serviceStart = $booking->serviceStartsAt();
+        if ($serviceStart === null || $serviceStart->isFuture()) {
             throw ValidationException::withMessages([
-                'status' => ['This booking has already progressed past the point of a no-show report.'],
+                'status' => ['This booking\'s scheduled time has not started yet.'],
             ]);
         }
 
-        $eventStart = \Illuminate\Support\Carbon::parse("{$booking->event_date->format('Y-m-d')} {$booking->start_time}");
-        if ($eventStart->isFuture()) {
+        if ($isClientReporter) {
+            // Client -> photographer no-show: from the scheduled start until the scheduled
+            // service END TIME + 48 hours. Checked here (not just in the UI) and independent of the
+            // tracker stage, so a photographer moving the booking to Editing cannot cut it short.
+            $deadline = $booking->noShowReportDeadline();
+
+            if ($deadline === null) {
+                throw ValidationException::withMessages([
+                    'status' => ['This booking has no confirmed end time yet, so a no-show report cannot be filed.'],
+                ]);
+            }
+
+            if (now()->gt($deadline)) {
+                throw ValidationException::withMessages([
+                    'status' => ['The reporting period for this booking ended on '.$deadline->format('M j, Y g:i A').'.'],
+                ]);
+            }
+        } elseif (in_array($booking->service_status, [ServiceTrackerStatus::Delivered], true)) {
+            // Photographer -> client no-show keeps its existing rule.
             throw ValidationException::withMessages([
-                'status' => ['This booking\'s scheduled time has not started yet.'],
+                'status' => ['This booking has already progressed past the point of a no-show report.'],
             ]);
         }
 
@@ -62,27 +82,33 @@ class ReportBookingNonCompletionAction
             ]);
         }
 
-        $booking->status = BookingStatus::Cancelled;
+        // NOT cancelled here. The booking stays Confirmed and goes to the admin for review.
+        // The other party has 16 hours to dispute.
         $booking->non_completion_reason = $reason;
         $booking->non_completion_reported_at = now();
         $booking->non_completion_reported_by = $reporter->id;
         $booking->non_completion_dispute_deadline_at = now()->addHours(self::DISPUTE_WINDOW_HOURS);
-        $booking->non_completion_reported_by = $reporter->id;
-        $booking->non_completion_dispute_deadline_at = now()->addHours(self::DISPUTE_WINDOW_HOURS);
+        $booking->non_completion_review_status = 'pending_admin';
+        $booking->non_completion_disputed_at = null;
+        $booking->non_completion_dispute_reason = null;
+        $booking->non_completion_resolved_at = null;
         if ($notes) {
-            $booking->cancellation_reason = $notes;
+            $booking->cancellation_reason = $notes; // reporter's statement; cleared if admin dismisses
         }
         $booking->save();
 
         $fresh = $booking->fresh();
         $other = $isClient ? $fresh->photographer : $fresh->client;
         $other->notify(new \App\Notifications\Booking\NonCompletionNotification($fresh, 'reported'));
-
+        // Tell every admin there is a report to review.
+        \App\Models\User::query()->get()
+            ->filter(fn (User $u) => $u->isAdministrator())
+            ->each(fn (User $admin) => $admin->notify(new \App\Notifications\Booking\NonCompletionNotification($fresh, 'admin_review')));
         $this->activityLogger->execute(
             causer: $reporter,
             subject: $fresh,
             action: 'booking.non_completion_reported',
-            description: "Booking #{$fresh->id} marked not completed: {$reason->value}",
+            description: "Booking #{$fresh->id} reported as {$reason->value} (waiting for admin review)",
             metadata: ['reason' => $reason->value, 'notes' => $notes],
         );
 

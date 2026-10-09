@@ -19,7 +19,7 @@ class PaymentController extends Controller
         abort_unless($request->user()->isAdministrator(), 403);
 
         return $this->success(
-            PaymentResource::collection(Payment::latest()->get())
+            PaymentResource::collection(Payment::with(['booking.client', 'verifiedBy'])->latest()->get())
         );
     }
 

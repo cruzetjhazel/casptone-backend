@@ -29,14 +29,14 @@ class ManuallyVerifyPaymentAction
     {
         if (! $payment->isAwaitingManualReview()) {
             throw ValidationException::withMessages([
-                'payment' => ['Only payments that failed automatic matching can be manually verified.'],
+                'payment' => ['Only payments awaiting photographer confirmation can be verified.'],
             ]);
         }
 
         // Re-check duplicate-reference protection (see SubmitPaymentAction) —
         // another booking may have successfully used this same reference
         // number in the time between this payment being submitted and now.
-        $alreadyUsedElsewhere = Payment::where('photographer_id', $payment->photographer_id)
+        $alreadyUsedElsewhere = Payment::query()
             ->where('reference_number', $payment->reference_number)
             ->where('id', '!=', $payment->id)
             ->whereIn('matching_status', [PaymentMatchingStatus::Matched, PaymentMatchingStatus::ManuallyVerified])

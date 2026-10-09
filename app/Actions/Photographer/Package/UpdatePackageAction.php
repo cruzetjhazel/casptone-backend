@@ -26,7 +26,7 @@ class UpdatePackageAction
         }
 
         $package->fill(collect($data)->only([
-            'name', 'description', 'included_items', 'price', 'duration_minutes', 'buffer_minutes',
+            'name', 'description', 'included_items', 'price', 'outdoor_price', 'duration_minutes', 'buffer_minutes',
             'schedule_mode', 'allows_multiple_sessions', 'max_sessions',
         ])->toArray());
 

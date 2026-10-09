@@ -29,6 +29,9 @@ class DatabaseSeeder extends Seeder
         $this->call(PhotographerShowcaseSeeder::class);
         $this->call(CatalogShowcaseSeeder::class);
         $this->call(BookingStatesShowcaseSeeder::class);
+        $this->call(ScenarioMatrixSeeder::class);
+        $this->call(ApplicationStatesSeeder::class);
+        $this->call(BookingLocationSeeder::class);
  
         $this->call(TestClientSeeder::class);
     }

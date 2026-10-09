@@ -15,6 +15,7 @@ class CustomPackageConfigResource extends JsonResource
             'base_hours' => $this->base_hours,
             'buffer_minutes' => $this->buffer_minutes,
             'hourly_rate' => $this->hourly_rate,
+            'outdoor_hourly_rate' => $this->outdoor_hourly_rate,
             'min_hours' => $this->min_hours,
             'max_hours' => $this->max_hours,
             'allows_multiple_sessions' => (bool) $this->allows_multiple_sessions,

@@ -14,11 +14,16 @@ class PublicCustomPackageConfigResource extends JsonResource
             'base_fee' => $this->base_fee,
             'base_hours' => $this->base_hours,
             'hourly_rate' => $this->hourly_rate,
+            'outdoor_hourly_rate' => $this->outdoor_hourly_rate,
             'min_hours' => $this->min_hours,
             'max_hours' => $this->max_hours,
             'allows_multiple_sessions' => (bool) $this->allows_multiple_sessions,
             'max_sessions' => $this->max_sessions,
             'base_fee_mode' => $this->base_fee_mode,
+            'pricing_model' => $this->pricing_model ?: ($this->hourly_rate !== null ? 'hourly' : 'fixed'),
+            'unit_rate' => $this->unit_rate,
+            'coverage_hours' => $this->coverage_hours,
+            'max_people' => $this->max_people,
         ];
     }
 }

@@ -53,6 +53,17 @@ class ActivityLog extends Model
                                 ->where('client_id', $user->id)
                                 ->orWhere('photographer_id', $user->id);
                         });
+                })
+                ->orWhere(function ($q2) use ($user) {
+                    // Payments where this user is the client or photographer
+                    $q2->where('subject_type', Payment::class)
+                        ->whereIn('subject_id', function ($sub) use ($user) {
+                            $sub->select('id')->from('payments')
+                                ->where(function ($w) use ($user) {
+                                    $w->where('client_id', $user->id)
+                                        ->orWhere('photographer_id', $user->id);
+                                });
+                        });
                 });
         });
     }

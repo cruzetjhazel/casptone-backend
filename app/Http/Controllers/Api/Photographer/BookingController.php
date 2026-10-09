@@ -26,6 +26,8 @@ class BookingController extends Controller
 
     public function index(Request $request)
     {
+        app(\App\Actions\Booking\ExpireStaleBookingHoldsAction::class)->executeThrottled();
+
         return $this->success(
             BookingResource::collection($request->user()->bookingsAsPhotographer()->latest()->get())
         );
@@ -35,7 +37,9 @@ class BookingController extends Controller
     {
         $this->authorize('view', $booking);
 
-        return $this->success(new BookingResource($booking));
+        app(\App\Actions\Booking\ExpireStaleBookingHoldsAction::class)->executeThrottled();
+
+        return $this->success(new BookingResource($booking->refresh()));
     }
 
     public function accept(Booking $booking, AcceptBookingAction $action)
@@ -51,7 +55,7 @@ class BookingController extends Controller
 
         $booking = $action->execute($booking, $request->validated('reason'));
 
-        return $this->success(new BookingResource($booking), 'Booking rejected.');
+        return $this->success(new BookingResource($booking), 'Booking request declined.');
     }
 
         public function reportNonCompletion(\App\Http\Requests\ReportBookingNonCompletionRequest $request, Booking $booking, \App\Actions\Booking\ReportBookingNonCompletionAction $action)
@@ -92,7 +96,7 @@ class BookingController extends Controller
 
         $booking = $action->execute($booking, CancellationDecision::Rejected);
 
-        return $this->success(new BookingResource($booking), 'Cancellation request rejected.');
+        return $this->success(new BookingResource($booking), 'Cancellation request declined.');
     }
 
     public function accommodationCandidates(Booking $booking)
@@ -127,7 +131,31 @@ class BookingController extends Controller
     {
         $this->authorize('decideReschedule', $booking);
 
-        return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Rejected)), 'Reschedule rejected.');
+        return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Rejected)), 'Reschedule request declined.');
+    }
+
+    public function approveModification(Booking $booking, \App\Actions\Booking\DecideBookingModificationAction $action)
+    {
+        $this->authorize('decideReschedule', $booking);
+
+        return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Approved)), 'Modification approved.');
+    }
+
+    public function rejectModification(Booking $booking, \App\Actions\Booking\DecideBookingModificationAction $action)
+    {
+        $this->authorize('decideReschedule', $booking);
+
+        return $this->success(new BookingResource($action->execute($booking, CancellationDecision::Rejected)), 'Modification request declined.');
+    }
+
+    /** The photographer cancels a CONFIRMED booking (to turn down a new request they use "decline"). */
+    public function cancel(RejectBookingRequest $request, Booking $booking, \App\Actions\Booking\CancelBookingByPhotographerAction $action)
+    {
+        $this->authorize('respond', $booking);
+
+        $booking = $action->execute($booking, $request->validated('reason'));
+
+        return $this->success(new BookingResource($booking), 'Booking cancelled.');
     }
 
     public function approveExtension(Booking $booking, BookingExtension $extension, DecideBookingExtensionAction $action)

@@ -36,7 +36,6 @@ class ClientProfileTest extends TestCase
 
         $response = $this->patchJson('/api/client/profile', [
             'name' => 'Updated Name',
-            'phone_number' => '09171234567',
             'birthday' => '1995-05-10',
             'gender' => 'Female',
             'address' => '123 Test St',
@@ -53,7 +52,7 @@ class ClientProfileTest extends TestCase
         $user = User::factory()->create();
         Sanctum::actingAs($user);
 
-        $this->patchJson('/api/client/profile', ['email' => 'changed@example.com'])->assertOk();
+        $this->patchJson('/api/client/profile', ['email' => 'changed@example.com'])->assertUnprocessable();
 
         $this->assertDatabaseHas('users', ['id' => $user->id, 'email' => $user->email]);
     }

@@ -21,7 +21,19 @@ class DeactivateAccountAction
             ]);
         }
 
-        $user->update(['account_status' => AccountStatus::Deactivated]);
+        if ($user->reactivated_at && \Illuminate\Support\Carbon::parse($user->reactivated_at)->addDays(7)->isFuture()) {
+            $until = \Illuminate\Support\Carbon::parse($user->reactivated_at)->addDays(7)->format('F j, Y');
+
+            throw ValidationException::withMessages([
+                'account' => ["You recently reactivated your account. You can deactivate it again on {$until}."],
+            ]);
+        }
+
+        $user->account_status = AccountStatus::Deactivated;
+        $user->deactivated_at = now();
+        $user->save();
+        $user->tokens()->delete();
+        $user->tokens()->delete();
 
         $fresh = $user->fresh();
 

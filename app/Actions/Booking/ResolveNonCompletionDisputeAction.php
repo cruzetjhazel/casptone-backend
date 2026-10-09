@@ -21,16 +21,24 @@ class ResolveNonCompletionDisputeAction
     public function execute(Booking $booking, User $admin, string $decision, ?string $notes): Booking
     {
         if ($booking->non_completion_review_status !== 'pending_admin') {
-            throw ValidationException::withMessages(['status' => ['This booking has no dispute awaiting review.']]);
+            throw ValidationException::withMessages(['status' => ['This booking has no no-show report awaiting review.']]);
         }
+
+        // The admin can decide right away. A dispute from the other party is optional extra
+        // context (it can still be sent until the admin decides), not a waiting period.
 
         $booking->non_completion_review_status = $decision;
         $booking->non_completion_admin_notes = $notes;
         $booking->non_completion_resolved_at = now();
 
-        if ($decision === 'overturned') {
+        if ($decision === 'upheld') {
+            // Confirmed no-show: an end status of its own (not Cancelled). The client may review it.
+            $booking->status = BookingStatus::NoShow;
+        } else {
+            // Report dismissed: the booking carries on as normal.
             $booking->status = BookingStatus::Confirmed;
             $booking->non_completion_reason = null;
+            $booking->cancellation_reason = null;
         }
         $booking->save();
 

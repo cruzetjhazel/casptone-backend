@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use App\Observers\BookingObserver;
+use App\Enums\BookingNonCompletionReason;
 
 #[ObservedBy([BookingObserver::class])]
 class Booking extends Model
@@ -34,12 +35,16 @@ class Booking extends Model
         'rejection_reason', 'cancellation_reason', 'cancellation_requested_at',
         'cancellation_decision', 'cancellation_decided_at', 'superseded_by_booking_id',
         'non_completion_reason', 'non_completion_reported_at',
+        'non_completion_dispute_deadline_at', 'non_completion_disputed_at',
+        'non_completion_dispute_reason', 'non_completion_dispute_report_id',
+        'non_completion_resolution', 'non_completion_resolved_at',
         'non_completion_reported_by', 'non_completion_dispute_deadline_at',
         'non_completion_disputed_at', 'non_completion_dispute_reason',
         'non_completion_review_status', 'non_completion_admin_notes', 'non_completion_resolved_at',
-        'requested_event_date', 'requested_start_time', 'reschedule_requested_at',
+        'requested_event_date', 'requested_start_time', 'reschedule_requested_at', 'reschedule_type',
         'reschedule_decision', 'reschedule_decided_at',
         'modification_type', 'modification_reason', 'modification_requested_at',
+        'reschedule_reason', 'modification_changes', 'modification_decision', 'modification_decided_at', 'cancelled_by',
         'payment_plan', 'payment_status',
         'service_status', 'service_status_updated_at',
         'custom_hours',
@@ -71,12 +76,22 @@ class Booking extends Model
             'reschedule_decision' => CancellationDecision::class,
             'reschedule_decided_at' => 'datetime',
             'modification_requested_at' => 'datetime',
+            'modification_changes' => 'array',
+            'modification_decision' => CancellationDecision::class,
+            'modification_decided_at' => 'datetime',
             'rescheduled_at' => 'datetime',
             'payment_plan' => PaymentPlan::class,
             'payment_status' => BookingPaymentStatus::class,
             'service_status' => ServiceTrackerStatus::class,
             'service_status_updated_at' => 'datetime',
+            'non_completion_reason' => \App\Enums\BookingNonCompletionReason::class,
+            'non_completion_reported_at' => 'datetime',
+            'non_completion_dispute_deadline_at' => 'datetime',
+            'non_completion_disputed_at' => 'datetime',
+            'non_completion_resolved_at' => 'datetime',
         ];
+
+    
     }
 
     public function client(): BelongsTo
@@ -133,6 +148,12 @@ class Booking extends Model
     public function extensions(): HasMany
     {
         return $this->hasMany(BookingExtension::class);
+    }
+
+    /** Every approved move of this booking (normal reschedules and weather/venue postponements). */
+    public function reschedules(): HasMany
+    {
+        return $this->hasMany(BookingReschedule::class);
     }
 
     public function schedules(): HasMany
@@ -214,6 +235,34 @@ class Booking extends Model
         return $this->reschedule_requested_at !== null && $this->reschedule_decision === null;
     }
 
+    public function hasPendingModificationRequest(): bool
+    {
+        return $this->modification_requested_at !== null && $this->modification_decision === null;
+    }
+
+    /** Minimum notice (days before the event) for reschedule / modification requests. */
+    public const CHANGE_NOTICE_DAYS = 7;
+
+    /** Photographer buffer that was saved with this booking (0 if none). */
+    public function bufferMinutes(): int
+    {
+        return (int) ($this->package_snapshot['buffer_minutes'] ?? $this->custom_package_snapshot['buffer_minutes'] ?? 0);
+    }
+
+    public function hasEnoughNoticeForChanges(): bool
+    {
+        return \Carbon\Carbon::parse($this->event_date)->startOfDay()
+            ->gte(\Carbon\Carbon::today()->addDays(self::CHANGE_NOTICE_DAYS));
+    }
+
+    /** Any cancellation / reschedule / modification request still waiting for the photographer. */
+    public function hasPendingChangeRequest(): bool
+    {
+        return $this->hasPendingCancellationRequest()
+            || $this->hasPendingRescheduleRequest()
+            || $this->hasPendingModificationRequest();
+    }
+
     /**
      * The amount due online for a given payment plan (§8.2, §8.8).
      * Half Payment = 50% online + 50% remaining balance; Full Payment = 100% online.
@@ -227,7 +276,12 @@ class Booking extends Model
 
     public function totalPaid(): float
     {
-        return (float) $this->payments()->sum('amount');
+        return (float) $this->payments()
+            ->where(function ($q) {
+                $q->whereNull('matching_status')
+                  ->orWhere('matching_status', '!=', \App\Enums\PaymentMatchingStatus::Rejected->value);
+            })
+            ->sum('amount');
     }
 
     /**
@@ -323,27 +377,167 @@ class Booking extends Model
             ->where('end_time', '>', $this->start_time)
             ->with('client');
     }
-        /** Completed, or reported as a no-show (and not overturned by admin). */
+        /**
+     * Completed, or the photographer failed to show up (client can review that).
+     * A client no-show is never reviewable: the client didn't attend the
+     * service, so they must not be able to rate it. An admin-overturned
+     * report clears non_completion_reason and returns to Confirmed, so it
+     * isn't reviewable either until it is actually Completed.
+     */
     public function isReviewable(): bool
     {
         return $this->status === BookingStatus::Completed
-            || ($this->status === BookingStatus::Cancelled && $this->non_completion_reason !== null);
+            || ($this->status === BookingStatus::NoShow
+                && $this->non_completion_reason === BookingNonCompletionReason::PhotographerNoShow);
     }
 
-    /** null | open | disputed | upheld | final */
-    public function nonCompletionState(): ?string
+    /** Hours after the scheduled service END TIME during which the client may report a photographer no-show. */
+    public const NO_SHOW_REPORT_WINDOW_HOURS = 48;
+
+    /** Start of the earliest session (this booking's own schedule or any additional one). */
+    public function serviceStartsAt(): ?\Carbon\Carbon
     {
-        if (! $this->non_completion_reason) {
+        return $this->allSchedules()
+            ->filter(fn ($s) => $s->start_time !== null)
+            ->map(fn ($s) => \Carbon\Carbon::parse(\Carbon\Carbon::parse($s->event_date)->toDateString().' '.$s->start_time))
+            ->sortBy(fn (\Carbon\Carbon $c) => $c->timestamp)
+            ->first();
+    }
+
+    /** End of the latest session. Null while any session's duration is still unconfirmed (never guessed). */
+    public function serviceEndsAt(): ?\Carbon\Carbon
+    {
+        $schedules = $this->allSchedules();
+
+        if ($schedules->contains(fn ($s) => $s->end_time === null)) {
             return null;
         }
-        if ($this->non_completion_review_status === 'pending_admin') {
-            return 'disputed';
+
+        return $schedules
+            ->map(fn ($s) => \Carbon\Carbon::parse(\Carbon\Carbon::parse($s->event_date)->toDateString().' '.$s->end_time))
+            ->sortByDesc(fn (\Carbon\Carbon $c) => $c->timestamp)
+            ->first();
+    }
+
+    /**
+     * When the WHOLE service is over: the end of the latest session (so the last day of
+     * a multi-day booking). A session whose end time is still unconfirmed counts as
+     * running until the end of its event day.
+     */
+    public function serviceFinishesAt(): \Carbon\Carbon
+    {
+        return $this->allSchedules()
+            ->map(function ($s) {
+                $date = \Carbon\Carbon::parse($s->event_date)->toDateString();
+
+                return $s->end_time !== null
+                    ? \Carbon\Carbon::parse($date.' '.$s->end_time)
+                    : \Carbon\Carbon::parse($date)->endOfDay();
+            })
+            ->sortByDesc(fn (\Carbon\Carbon $c) => $c->timestamp)
+            ->first();
+    }
+
+    /** Scheduled service END TIME + 48 hours (not midnight, not the start time, not "when the button appeared"). */
+    public function noShowReportDeadline(): ?\Carbon\Carbon
+    {
+        return $this->serviceEndsAt()?->copy()->addHours(self::NO_SHOW_REPORT_WINDOW_HOURS);
+    }
+
+    public function isWithinNoShowReportWindow(): bool
+    {
+        $start = $this->serviceStartsAt();
+        $deadline = $this->noShowReportDeadline();
+
+        return $start !== null && $deadline !== null && now()->gte($start) && now()->lte($deadline);
+    }
+
+    /**
+     * While the client can still report a photographer no-show, the photographer cannot
+     * close the booking as Completed. Null = nothing blocks completion (window over, never
+     * reportable because no end time, or a report was already decided).
+     */
+    public function completionBlockedUntil(): ?\Carbon\Carbon
+    {
+        if ($this->non_completion_reason !== null || $this->non_completion_review_status === 'overturned') {
+            return null;
+        }
+
+        $deadline = $this->noShowReportDeadline();
+
+        return $deadline !== null && now()->lte($deadline) ? $deadline : null;
+    }
+
+    /** A no-show report (either side) is waiting for the admin. */
+    public function hasPendingNoShowReport(): bool
+    {
+        return $this->non_completion_review_status === 'pending_admin';
+    }
+
+    /** Client may report a photographer no-show: Confirmed, never reported before, inside the 48h window. Independent of the tracker stage. */
+    public function canClientReportPhotographerNoShow(): bool
+    {
+        return $this->status === BookingStatus::Confirmed
+            && $this->non_completion_reason === null
+            && $this->non_completion_review_status !== 'overturned'
+            && $this->isWithinNoShowReportWindow();
+    }
+
+    /** Weather / venue / agreed postponement: a paid booking that has not reached Editing yet and has no pending no-show report. */
+    public function isEligibleForPostponement(): bool
+    {
+        return $this->status === BookingStatus::Confirmed
+            && in_array($this->service_status, [ServiceTrackerStatus::Upcoming, ServiceTrackerStatus::EventDay], true)
+            && ! $this->hasPendingNoShowReport();
+    }
+
+    /**
+     * One place that answers "which client actions are available" — the backend
+     * actions enforce the same rules, and BookingResource sends this to the frontend.
+     */
+    public function clientActions(): array
+    {
+        $open = $this->isEligibleForCancellationRequest();
+        $noPendingChange = ! $this->hasPendingChangeRequest();
+        $singleSession = $this->end_time !== null && ! $this->schedules()->exists();
+        $deadline = $this->noShowReportDeadline();
+        $started = $this->serviceStartsAt()?->isPast() ?? false;
+
+        return [
+            'can_modify' => $open && $noPendingChange && $this->hasEnoughNoticeForChanges(),
+            'can_reschedule' => $open && $noPendingChange && $singleSession && $this->hasEnoughNoticeForChanges(),
+            'can_postpone' => $this->isEligibleForPostponement() && $noPendingChange && $singleSession,
+            'can_cancel' => $open && ! $this->hasPendingCancellationRequest(),
+            'can_report_photographer_no_show' => $this->canClientReportPhotographerNoShow(),
+            'no_show_report_deadline' => $deadline?->toISOString(),
+            'no_show_report_expired' => in_array($this->status, [BookingStatus::Confirmed, BookingStatus::Completed], true)
+                && $this->non_completion_reason === null
+                && $started
+                && $deadline !== null
+                && now()->gt($deadline),
+        ];
+    }
+
+    /** null | open | awaiting_admin | disputed | upheld | overturned | final (old rows) */
+    public function nonCompletionState(): ?string
+    {
+        if ($this->non_completion_review_status === 'overturned') {
+            return 'overturned';
+        }
+        if (! $this->non_completion_reason) {
+            return null;
         }
         if ($this->non_completion_review_status === 'upheld') {
             return 'upheld';
         }
-        if ($this->non_completion_dispute_deadline_at && $this->non_completion_dispute_deadline_at->isFuture()) {
-            return 'open';
+        if ($this->non_completion_review_status === 'pending_admin') {
+            if ($this->non_completion_disputed_at) {
+                return 'disputed';
+            }
+
+            return $this->non_completion_dispute_deadline_at && $this->non_completion_dispute_deadline_at->isFuture()
+                ? 'open'
+                : 'awaiting_admin';
         }
 
         return 'final';

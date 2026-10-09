@@ -24,7 +24,12 @@ class BookingCancelledNotification extends Notification
         return [
             'type' => 'booking.cancelled',
             'booking_id' => $this->booking->id,
-            'message' => 'This booking has been cancelled.',
+            'message' => match ($this->booking->cancelled_by) {
+                'photographer' => 'The photographer cancelled this booking.',
+                'client' => 'The client cancelled this booking.',
+                'admin' => 'An administrator cancelled this booking.',
+                default => 'This booking has been cancelled.',
+            },
         ];
     }
 }

@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Traits\ApiResponses;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use App\Actions\Photographer\RegisterPhotographerAction;
 use App\Http\Requests\RegisterPhotographerRequest;
@@ -34,18 +35,58 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request)
     {
+        $throttleKey = 'login-attempts:' . strtolower(trim((string) $request->validated('email')));
+
+        // 5 failed attempts per email per minute, then block until the window expires.
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $retryAfter = RateLimiter::availableIn($throttleKey);
+            $message = "Too many login attempts. Please try again in {$retryAfter} seconds.";
+
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'errors' => ['email' => [$message]],
+                'retry_after' => $retryAfter,
+            ], 429)->header('Retry-After', $retryAfter);
+        }
+
         $user = User::where('email', $request->validated('email'))->first();
 
         if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
+            RateLimiter::hit($throttleKey, 60);
+
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
+        // Correct password: reset the counter.
+        RateLimiter::clear($throttleKey);
+
         if ($user->account_status !== AccountStatus::Active) {
-            throw ValidationException::withMessages([
-                'email' => ['This account is not active.'],
-            ]);
+            $iso = fn ($v) => $v ? \Illuminate\Support\Carbon::parse($v)->toIso8601String() : null;
+            $appeal = $user->account_status === AccountStatus::Suspended
+                ? \App\Models\SuspensionAppeal::where('user_id', $user->id)
+                    ->when($user->suspended_at, fn ($q) => $q->where('created_at', '>=', $user->suspended_at))
+                    ->latest('id')->first()
+                : null;
+
+            return response()->json([
+                'success' => false,
+                'message' => 'This account is not active.',
+                'errors' => ['email' => ['This account is not active.']],
+                'account' => [
+                    'status' => $user->account_status->value,
+                    'reason' => $user->account_status === AccountStatus::Suspended ? $user->suspension_reason : null,
+                    'suspended_at' => $iso($user->suspended_at),
+                    'deactivated_at' => $iso($user->deactivated_at),
+                    'appeal' => $appeal ? [
+                        'status' => $appeal->status,
+                        'submitted_at' => $appeal->created_at?->toIso8601String(),
+                        'admin_response' => $appeal->admin_response,
+                    ] : null,
+                ],
+            ], 422);
         }
 
         $token = $user->createToken('api')->plainTextToken;
@@ -54,6 +95,40 @@ class AuthController extends Controller
             ['user' => new UserResource($user), 'token' => $token],
             'Logged in successfully.'
         );
+    }
+
+        /**
+     * A user reactivating an account they deactivated themselves.
+     * Requires the correct password. Suspended accounts can never use this.
+     */
+    public function reactivate(LoginRequest $request)
+    {
+        $user = User::where('email', $request->validated('email'))->first();
+
+        if (! $user || ! Hash::check($request->validated('password'), $user->password)) {
+            throw ValidationException::withMessages([
+                'email' => ['The provided credentials are incorrect.'],
+            ]);
+        }
+
+        if ($user->account_status !== AccountStatus::Deactivated) {
+            throw ValidationException::withMessages([
+                'email' => ['This account is not active.'],
+            ]);
+        }
+
+        $user->account_status = AccountStatus::Active;
+        $user->reactivated_at = now();
+        $user->save();
+
+        app(\App\Actions\ActivityLog\LogActivityAction::class)->execute(
+            causer: $user,
+            subject: $user,
+            action: 'account.reactivated',
+            description: 'Reactivated their own account',
+        );
+
+        return $this->success(null, 'Account reactivated. You can now log in.');
     }
 
     public function logout(Request $request)
@@ -86,8 +161,13 @@ class AuthController extends Controller
 {
     $email = strtolower(trim((string) $request->input('email')));
 
-    if (!preg_match('/^[a-z0-9._%+\-]+@gmail\.com$/', $email)) {
-        return response()->json(['available' => false, 'reason' => 'invalid_domain']);
+    $validator = \Illuminate\Support\Facades\Validator::make(
+        ['email' => $email],
+        ['email' => ['required', 'email:rfc,dns']]
+    );
+
+    if ($validator->fails()) {
+        return response()->json(['available' => false, 'reason' => 'invalid_format']);
     }
 
     $exists = User::whereRaw('LOWER(email) = ?', [$email])->exists();

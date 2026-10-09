@@ -89,8 +89,7 @@ class BookingNotificationTest extends TestCase
     public function test_approved_cancellation_notifies_both_parties(): void
     {
         $photographer = $this->approvedPhotographer();
-        $booking = Booking::factory()->accepted()->create(['photographer_id' => $photographer->id]);
-        Sanctum::actingAs($booking->client);
+        $booking = Booking::factory()->accepted()->create(['photographer_id' => $photographer->id]);        $booking = Booking::factory()->confirmed()->create(['photographer_id' => $photographer->id]);        Sanctum::actingAs($booking->client);
         $this->postJson("/api/client/bookings/{$booking->id}/request-cancellation", ['reason' => 'x'])->assertOk();
 
         Sanctum::actingAs($photographer);

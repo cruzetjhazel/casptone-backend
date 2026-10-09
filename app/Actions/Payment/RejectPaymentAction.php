@@ -19,7 +19,7 @@ class RejectPaymentAction
     {
         if (! $payment->isAwaitingManualReview()) {
             throw ValidationException::withMessages([
-                'payment' => ['Only payments that failed automatic matching can be rejected.'],
+                'payment' => ['Only payments awaiting photographer confirmation can be rejected.'],
             ]);
         }
 

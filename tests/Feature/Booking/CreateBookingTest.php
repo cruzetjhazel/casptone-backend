@@ -215,12 +215,12 @@ class CreateBookingTest extends TestCase
 
         $payload = $this->validPayload($photographer);
         $province = \App\Models\LocationProvince::create([
-            'psgc_code' => '0000000001',
+            'psgc_code' => '0506200000', // Sorsogon
             'name' => 'Test Province',
             'region_code' => '05',
         ]);
         $city = \App\Models\LocationCityMunicipality::create([
-            'psgc_code' => '0000000002',
+            'psgc_code' => '0506203000', // Bulan
             'province_id' => $province->id,
             'name' => 'Test Municipality',
             'type' => 'municipality',

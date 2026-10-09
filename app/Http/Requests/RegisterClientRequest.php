@@ -25,8 +25,6 @@ class RegisterClientRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'email.regex' => 'Only @gmail.com addresses are accepted.',
-            'email.unique' => 'This email is already registered.',
         ];
     }
 
@@ -34,7 +32,7 @@ class RegisterClientRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'regex:/^[a-z0-9._%+\-]+@gmail\.com$/', Rule::unique('users', 'email')],
+            'email' => ['required', 'email:rfc,dns', 'max:255', Rule::unique('users', 'email')],
             'phone_number' => ['required', 'string', 'max:20'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'terms_accepted' => ['required', 'accepted'],

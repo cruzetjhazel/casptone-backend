@@ -10,7 +10,7 @@ class CustomPackageConfig extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'enabled', 'base_fee', 'base_hours', 'buffer_minutes', 'hourly_rate', 'min_hours', 'max_hours', 'allows_multiple_sessions', 'max_sessions', 'base_fee_mode', 'pricing_model', 'unit_rate', 'coverage_hours', 'max_people'];
+    protected $fillable = ['user_id', 'enabled', 'base_fee', 'base_hours', 'buffer_minutes', 'hourly_rate', 'outdoor_hourly_rate', 'min_hours', 'max_hours', 'allows_multiple_sessions', 'max_sessions', 'base_fee_mode', 'pricing_model', 'unit_rate', 'coverage_hours', 'max_people'];
 
     protected function casts(): array
     {
@@ -18,6 +18,7 @@ class CustomPackageConfig extends Model
             'enabled' => 'boolean',
             'base_fee' => 'decimal:2',
             'hourly_rate' => 'decimal:2',
+            'outdoor_hourly_rate' => 'decimal:2',
             'base_hours' => 'integer',
             'min_hours' => 'integer',
             'max_hours' => 'integer',

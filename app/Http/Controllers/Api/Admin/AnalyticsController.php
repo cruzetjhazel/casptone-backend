@@ -208,7 +208,7 @@ class AnalyticsController extends Controller
 
         // Of the bookings that have ended, how many finished successfully.
         $completed = Booking::where('status', BookingStatus::Completed)->count();
-        $cancelled = Booking::where('status', BookingStatus::Cancelled)->count();
+        $cancelled = Booking::whereIn('status', [BookingStatus::Cancelled, BookingStatus::NoShow])->count();
 
         $avgRating = Review::avg('rating');
 

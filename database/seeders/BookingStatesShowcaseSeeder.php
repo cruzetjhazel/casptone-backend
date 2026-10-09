@@ -347,6 +347,7 @@ class BookingStatesShowcaseSeeder extends Seeder
             'non_completion_disputed_at' => now()->subDays(6),
             'non_completion_dispute_reason' => 'I could not attend.',
             'non_completion_review_status' => 'upheld',
+            'status' => BookingStatus::NoShow,
             'non_completion_admin_notes' => 'Photographer messages show arrival and attempts to reach the client.',
             'non_completion_resolved_at' => now()->subDays(4),
         ]));

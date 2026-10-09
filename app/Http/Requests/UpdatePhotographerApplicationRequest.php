@@ -23,7 +23,7 @@ class UpdatePhotographerApplicationRequest extends FormRequest
             'services.*' => ['string', 'max:100'],
             'other_services' => ['sometimes', 'nullable', 'string', 'max:500'],
             'coverage_area' => ['sometimes', 'nullable', Rule::in([
-                'bulan_only', 'bulan_nearby', 'anywhere_sorsogon', 'travel_outside_sorsogon',
+                'bulan_only', 'bulan_nearby', 'anywhere_sorsogon', 'travel_outside_sorsogon', 'travel_outside_bicol',
             ])],
             'shooting_types' => ['sometimes', 'nullable', 'array'],
             'shooting_types.*' => [Rule::in(['indoor', 'outdoor', 'event_coverage', 'drone_aerial', 'hybrid'])],

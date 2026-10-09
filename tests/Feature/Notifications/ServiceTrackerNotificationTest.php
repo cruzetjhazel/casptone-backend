@@ -24,7 +24,10 @@ class ServiceTrackerNotificationTest extends TestCase
     public function test_updating_the_service_tracker_notifies_the_client(): void
     {
         $photographer = $this->approvedPhotographer();
-        $booking = Booking::factory()->confirmed()->create(['photographer_id' => $photographer->id]);
+        $booking = Booking::factory()->confirmed()->create([
+            'photographer_id' => $photographer->id,
+            'event_date' => now()->subDay()->format('Y-m-d'),
+        ]);
         Sanctum::actingAs($photographer);
 
         $this->patchJson("/api/photographer/bookings/{$booking->id}/service-tracker", [

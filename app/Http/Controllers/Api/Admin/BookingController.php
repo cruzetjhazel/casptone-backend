@@ -20,10 +20,12 @@ class BookingController extends Controller
         'pending' => 'Pending',
         'accepted' => 'Accepted',
         'confirmed' => 'Confirmed',
-        'rejected' => 'Rejected',
+        'declined' => 'Declined',
         'cancelled' => 'Cancelled',
         'completed' => 'Completed',
         'expired' => 'Expired',
+        'not_completed' => 'Not Completed',
+        'no_show' => 'No Show',
     ];
 
     private const PAYMENT_STATUS_LABELS = [
@@ -44,6 +46,8 @@ class BookingController extends Controller
         'upcoming' => 'Upcoming',
         'event_day' => 'Event Day',
         'in_progress' => 'In Progress',
+        'editing' => 'Editing',
+        'delivered' => 'Delivered',
         'photo_editing' => 'Photo Editing',
         'ready_for_release' => 'Ready for Release',
         'completed' => 'Completed',
@@ -58,6 +62,8 @@ class BookingController extends Controller
     public function index(Request $request)
     {
         abort_unless($request->user()->isAdministrator(), 403);
+
+        app(\App\Actions\Booking\ExpireStaleBookingHoldsAction::class)->executeThrottled();
 
         $request->validate([
             'status' => ['sometimes', 'nullable', 'string'],
@@ -75,7 +81,19 @@ class BookingController extends Controller
         ]);
 
         if ($request->filled('status')) {
-            $query->where('status', strtolower($request->string('status')));
+            $statusFilter = strtolower($request->string('status')->toString());
+            if ($statusFilter === 'declined') {
+                $query->where('status', 'cancelled')->whereNotNull('rejection_reason');
+                            } elseif ($statusFilter === 'not_completed') {
+                $query->where('status', 'no_show');
+            } elseif ($statusFilter === 'no_show_review') {
+                $query->where('non_completion_review_status', 'pending_admin');
+                } elseif ($statusFilter === 'cancelled') {
+                $query->where('status', 'cancelled')->whereNull('rejection_reason')
+                    ->where(fn ($q) => $q->whereNull('non_completion_review_status')->orWhere('non_completion_review_status', '!=', 'upheld'));
+            } else {
+                $query->where('status', $statusFilter);
+            }
         }
 
         if ($request->filled('payment_status')) {
@@ -125,6 +143,7 @@ class BookingController extends Controller
                 'confirmed' => (int) ($statusCounts['confirmed'] ?? 0),
                 'completed' => (int) ($statusCounts['completed'] ?? 0),
                 'cancelled_or_rejected' => (int) (($statusCounts['cancelled'] ?? 0) + ($statusCounts['rejected'] ?? 0)),
+                'no_show' => (int) ($statusCounts['no_show'] ?? 0),
             ],
         ]);
     }
@@ -176,7 +195,7 @@ class BookingController extends Controller
         ]);
 
         abort_if(
-            in_array($booking->status, [BookingStatus::Cancelled, BookingStatus::Completed, BookingStatus::Rejected], true),
+            in_array($booking->status, [BookingStatus::Cancelled, BookingStatus::Completed, BookingStatus::Expired, BookingStatus::NoShow], true),
             422,
             'This booking cannot be cancelled from its current status.'
         );
@@ -185,6 +204,7 @@ class BookingController extends Controller
             'status' => BookingStatus::Cancelled,
             'payment_status' => BookingPaymentStatus::Cancelled,
             'cancellation_reason' => $request->input('reason', 'Cancelled by administrator.'),
+            'cancelled_by' => 'admin',
         ]);
 
         ActivityLog::create([
@@ -201,6 +221,10 @@ class BookingController extends Controller
     private function mapBooking(Booking $b): array
     {
         $statusValue = $b->status?->value ?? (string) $b->status;
+        // A request the photographer declined is stored as cancelled + a rejection reason.
+        if ($statusValue === 'cancelled' && $b->rejection_reason !== null) {
+            $statusValue = 'declined';
+        }
         $paymentStatusValue = $b->payment_status?->value ?? (string) $b->payment_status;
         $planValue = $b->payment_plan?->value ?? (string) $b->payment_plan;
 
@@ -231,6 +255,18 @@ class BookingController extends Controller
             'balance' => $b->remainingBalance(),
             'clientNotes' => $b->special_requests,
             'cancellationReason' => $b->cancellation_reason,
+                        'noShow' => $b->non_completion_reason ? [
+                'reason' => $b->non_completion_reason->value,
+                'state' => $b->nonCompletionState(),
+                'reportedBy' => $b->non_completion_reported_by === $b->client_id ? 'client' : 'photographer',
+                'reportedAt' => $b->non_completion_reported_at?->toISOString(),
+                'statement' => $b->cancellation_reason,
+                'deadline' => $b->non_completion_dispute_deadline_at?->toISOString(),
+                'disputedAt' => $b->non_completion_disputed_at?->toISOString(),
+                'disputeReason' => $b->non_completion_dispute_reason,
+                'adminNotes' => $b->non_completion_admin_notes,
+                'canDecide' => $b->non_completion_review_status === 'pending_admin',
+            ] : null,
             // TODO: pull from the latest Payment record once Payment.php is available —
             // left null rather than guessed so the frontend can render "—" honestly.
             'invoiceId' => null,
@@ -253,11 +289,11 @@ class BookingController extends Controller
             $status = $currentIndex === false ? 'Pending' : ($i < $currentIndex ? 'Completed' : ($i === $currentIndex ? 'In Progress' : 'Pending'));
 
             return [
-                'label' => self::TRACKER_STEP_LABELS[$step->value],
+                'label' => self::TRACKER_STEP_LABELS[$step->value] ?? ucfirst(str_replace('_', ' ', $step->value)),
                 'status' => $status,
                 'date' => $i === $currentIndex ? $b->service_status_updated_at?->toISOString() : null,
             ];
-        })->values();
+        })->values()->all();
     }
 
         public function resolveNonCompletion(Request $request, Booking $booking, \App\Actions\Booking\ResolveNonCompletionDisputeAction $action)

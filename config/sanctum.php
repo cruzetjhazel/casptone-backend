@@ -50,7 +50,7 @@ return [
     |
     */
 
-    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION_MINUTES', 60 * 24 * 14), // 14 days
+    'expiration' => null, // tokens never expire; the user stays logged in until they log out
 
     /*
     |--------------------------------------------------------------------------
