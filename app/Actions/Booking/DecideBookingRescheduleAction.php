@@ -112,9 +112,9 @@ class DecideBookingRescheduleAction
             ]);
         }
 
-        // A paid booking now owns its new slot: decline other unpaid requests for the same time.
+        // A paid booking now owns its new slot: other accepted bookings for that time go to the waitlist.
         if ($decision === CancellationDecision::Approved && $fresh->isPaymentSettled()) {
-            $this->conflicts->releaseConflictingBookings($fresh);
+            $this->conflicts->waitlistConflictingBookings($fresh);
         }
 
         $fresh->client->notify(new BookingRescheduleDecidedNotification($fresh, $decision));

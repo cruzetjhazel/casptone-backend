@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -31,7 +32,9 @@ class AppServiceProvider extends ServiceProvider
         // Auto-advances service_status to Upcoming once payment settles —
         // see BookingObserver::saved().
         Booking::observe(BookingObserver::class);
-
+                if (app()->environment('production')) {
+            URL::forceScheme('https');
+        }
         // Login session: expire after 24 hours of INACTIVITY (not 24h after
         // login). Sanctum stamps last_used_at on every authenticated request,
         // so each request slides the window forward. A token that has never
@@ -56,7 +59,7 @@ class AppServiceProvider extends ServiceProvider
         // lookup backed by a config/app.php entry instead, since cached config
         // freezes env() reads.
         ResetPassword::createUrlUsing(function ($notifiable, string $token) {
-            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:8080'), '/');
+            $frontendUrl = rtrim(config('frontend.url'), '/');
 
             return "{$frontendUrl}/reset-password?token={$token}&email=" . urlencode($notifiable->getEmailForPasswordReset());
         });

@@ -30,7 +30,11 @@ class PhotographerApplicationController extends Controller
         ]);
 
         $applications = PhotographerApplication::with('user')
-            ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
+            ->when(
+                $request->query('status'),
+                fn ($q, $status) => $q->where('status', $status),
+                fn ($q) => $q->where('status', '!=', 'draft')
+            )
             ->latest()
             ->paginate(15);
 

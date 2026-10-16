@@ -26,12 +26,16 @@ class BookingAccommodatedNotification extends Notification
         return ['database'];
     }
 
-    public function toArray(object $notifiable): array
+        public function toArray(object $notifiable): array
     {
+        $paymentSubmitted = $this->booking->payment_status === \App\Enums\BookingPaymentStatus::PendingVerification;
+
         return [
             'type' => 'booking.accommodated',
             'booking_id' => $this->booking->id,
-            'message' => 'Good news — the date/time you originally requested has opened back up and the photographer has offered it to you. Payment is now required to confirm your booking.',
+            'message' => $paymentSubmitted
+                ? 'The schedule is available again. Your submitted payment is now waiting for the photographer to confirm it.'
+                : 'The schedule is available again. Open your booking and accept the offer before the reservation deadline, then you can pay.',
         ];
     }
 }

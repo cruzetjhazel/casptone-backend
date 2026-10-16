@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api\Photographer;
 
 
+use App\Actions\Client\DeactivateAccountAction;
 use App\Actions\Photographer\ChangePasswordAction;
 use App\Actions\Photographer\CreatePhotographerProfileAction;
 use App\Actions\Photographer\UpdatePhotographerProfileAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ChangePasswordRequest;
+use App\Http\Requests\DeactivateAccountRequest;
 use App\Http\Requests\PhotographerProfileRequest;
 use App\Http\Resources\PhotographerProfileResource;
 use App\Models\PhotographerProfile;
@@ -67,6 +69,13 @@ class ProfileController extends Controller
         $action->execute($request->user(), $request->validated('current_password'), $request->validated('password'));
 
         return $this->success(null, 'Password changed successfully.');
+    }
+
+    public function deactivate(DeactivateAccountRequest $request, DeactivateAccountAction $action)
+    {
+        $action->execute($request->user());
+
+        return $this->success(null, 'Your account has been deactivated.');
     }
 
     protected function profileFor(Request $request): PhotographerProfile

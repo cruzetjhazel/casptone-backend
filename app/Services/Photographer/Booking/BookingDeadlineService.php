@@ -61,7 +61,7 @@ class BookingDeadlineService
 
         if ($deadline->lessThan($now->copy()->addMinutes(self::MIN_PAYMENT_WINDOW_MINUTES))) {
             throw ValidationException::withMessages([
-                'booking' => ['This event starts too soon to collect a reservation payment. Decline the request or arrange it directly with the client.'],
+                'booking' => ['This event starts too soon to collect a reservation payment, so it cannot be accepted. Please decline the request.'],
             ]);
         }
 

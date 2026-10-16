@@ -46,7 +46,14 @@ class BookingController extends Controller
     {
         $this->authorize('respond', $booking);
 
-        return $this->success(new BookingResource($action->execute($booking)), 'Booking accepted.');
+        $booking = $action->execute($booking);
+
+        return $this->success(
+            new BookingResource($booking),
+            $booking->status === \App\Enums\BookingStatus::Waitlisted
+                ? 'Another paid booking already holds this schedule, so this request was added to the waitlist instead of being confirmed.'
+                : 'Booking accepted.'
+        );
     }
 
     public function reject(RejectBookingRequest $request, Booking $booking, RejectBookingAction $action)
@@ -103,7 +110,8 @@ class BookingController extends Controller
     {
         $this->authorize('accommodate', $booking);
 
-        $candidates = $booking->accommodationCandidates()->latest()->get();
+        // Already ordered oldest request first (see Booking::accommodationCandidates()).
+        $candidates = $booking->accommodationCandidates()->get();
 
         return $this->success(BookingResource::collection($candidates));
     }

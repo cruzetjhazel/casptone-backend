@@ -69,6 +69,16 @@ class BookingFactory extends Factory
         ]);
     }
 
+    public function waitlisted(): static
+    {
+        // Mirrors SlotConflictService::waitlistConflictingBookings(): accepted, but another
+        // paid booking holds the slot. No payment window runs while waiting.
+        return $this->state(fn () => [
+            'status' => BookingStatus::Waitlisted,
+            'hold_expires_at' => null,
+        ]);
+    }
+
     public function rejected(): static
     {
         // Mirrors RejectBookingAction: Pending -> Cancelled + rejection_reason.

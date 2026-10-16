@@ -25,6 +25,8 @@ class RegisterClientRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'email.email' => 'Enter a valid email address.',
+            'email.unique' => 'This email is already registered.',
         ];
     }
 

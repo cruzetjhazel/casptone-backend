@@ -35,56 +35,73 @@ class AccommodateBookingAction
     ) {
     }
 
-    /**
-     * @param  Booking  $cancelledBooking  The previously paid/confirmed booking that was cancelled and freed the slot.
-     * @param  Booking  $candidate  The other client's request the photographer is choosing to accommodate.
+        /**
+     * @param  Booking  $cancelledBooking  The previously PAID booking that was cancelled and released the slot.
+     * @param  Booking  $candidate  The waitlisted booking the photographer chooses to offer the slot to.
      */
     public function execute(Booking $cancelledBooking, Booking $candidate): Booking
     {
         if ($cancelledBooking->status !== BookingStatus::Cancelled) {
             throw ValidationException::withMessages([
-                'booking' => ['Only a cancelled booking can have its slot accommodated to another client.'],
+                'booking' => ['Only a cancelled booking can have its slot offered to another client.'],
             ]);
         }
 
-        // Must actually be one of the clients who lost this exact slot —
-        // re-derives the same query the candidates list uses rather than
-        // trusting an arbitrary candidate id from the request.
-        $isValidCandidate = $cancelledBooking->accommodationCandidates()
-            ->where('id', $candidate->id)
-            ->exists();
-
-        if (! $isValidCandidate) {
-            throw ValidationException::withMessages([
-                'candidate_booking_id' => ['This booking is not an eligible candidate for this slot.'],
-            ]);
-        }
-
-        $accommodated = DB::transaction(function () use ($candidate) {
-            // Same atomicity guard as AcceptBookingAction/payment confirmation:
-            // lock the photographer row so a brand-new client can't win the
-            // slot through the normal create/pay flow in the same instant
-            // the photographer is accommodating someone else for it.
+        $accommodated = DB::transaction(function () use ($cancelledBooking, $candidate) {
+            // Same lock order as payment verification / cancellation approval: photographer
+            // row first, then the booking. Two offers or an offer + a payment verification
+            // for the same slot can never run at the same time.
             User::where('id', $candidate->photographer_id)->lockForUpdate()->firstOrFail();
+            $locked = Booking::whereKey($candidate->id)->lockForUpdate()->firstOrFail();
 
-            // assertNoPaidConflict() checks for any OTHER Confirmed +
-            // paid booking overlapping this same photographer/slot,
-            // excluding $candidate itself — exactly what we need before
-            // reviving it.
-            $this->slotConflictService->assertNoPaidConflict($candidate);
+            // Must still be a waiting booking for THIS slot — re-derived under the lock,
+            // never trusted from the request. Expired / cancelled / declined / already
+            // confirmed bookings are not candidates, so they are never reactivated.
+            $isValidCandidate = $cancelledBooking->accommodationCandidates()
+                ->where('id', $locked->id)
+                ->exists();
 
-            $candidate->update([
+            if (! $isValidCandidate) {
+                throw ValidationException::withMessages([
+                    'candidate_booking_id' => ['This booking is not an eligible candidate for this slot.'],
+                ]);
+            }
+
+            // Only ONE unpaid offer per slot: never push several waitlisted clients back to Confirmed.
+            if ($this->slotConflictService->hasOutstandingOffer($locked)) {
+                throw ValidationException::withMessages([
+                    'candidate_booking_id' => ['This schedule has already been offered to another client who has not paid yet. Wait until that client pays or the offer lapses.'],
+                ]);
+            }
+
+            $this->slotConflictService->assertNoPaidConflict($locked);
+
+            // A payment reference the client submitted while waiting is kept as it is, so it
+            // is not orphaned — the photographer can verify it. Otherwise a fresh payment
+            // window starts now (this throws if the event is too close to collect a payment).
+            $paymentAlreadySubmitted = $locked->payment_status === BookingPaymentStatus::PendingVerification;
+
+            $locked->update([
                 'status' => BookingStatus::Confirmed,
-                'payment_status' => BookingPaymentStatus::Pending,
-                'hold_expires_at' => $this->deadlines->paymentDeadline($candidate),
+                'payment_status' => $paymentAlreadySubmitted
+                    ? BookingPaymentStatus::PendingVerification
+                    : BookingPaymentStatus::Pending,
+                'hold_expires_at' => $paymentAlreadySubmitted ? null : $this->deadlines->paymentDeadline($locked),
                 'superseded_by_booking_id' => null,
-                'cancellation_reason' => null,
-                'cancellation_requested_at' => null,
-                'cancellation_decision' => null,
-                'cancellation_decided_at' => null,
+                   'slot_offered_at' => now(),
+   'slot_offer_accepted_at' => $paymentAlreadySubmitted ? now() : null,
             ]);
 
-            return $candidate->fresh();
+               \App\Models\BookingSlotOffer::create([
+       'booking_id' => $locked->id,
+       'released_booking_id' => $cancelledBooking->id,
+       'status' => $paymentAlreadySubmitted ? 'accepted' : 'offered',
+       'offered_at' => now(),
+       'expires_at' => $locked->hold_expires_at,
+       'responded_at' => $paymentAlreadySubmitted ? now() : null,
+   ]);
+
+   return $locked->fresh();
         });
 
         $accommodated->client->notify(new \App\Notifications\Booking\BookingAccommodatedNotification($accommodated));
@@ -93,7 +110,7 @@ class AccommodateBookingAction
             causer: $accommodated->photographer,
             subject: $accommodated,
             action: 'booking.accommodated',
-            description: "Booking #{$accommodated->id} accommodated for {$accommodated->client->name} after booking #{$cancelledBooking->id} was cancelled.",
+            description: "Booking #{$accommodated->id} was offered the schedule released by booking #{$cancelledBooking->id} ({$accommodated->client->name}).",
         );
 
         return $accommodated;

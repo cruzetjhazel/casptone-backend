@@ -6,32 +6,26 @@ use App\Actions\ActivityLog\LogActivityAction;
 use App\Enums\BookingPaymentStatus;
 use App\Enums\BookingStatus;
 use App\Models\Booking;
-use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Business rule: a date/time slot is only ever truly "taken" once a booking
- * for it has a CONFIRMED payment (partially or fully paid). Until then,
- * multiple overlapping Pending or Confirmed-but-unpaid bookings are allowed
- * to coexist for the same photographer/slot — see CreateBookingAction for
- * why (backup requests in case a client cancels or never pays).
+ * Business rule: a date/time slot is only ever truly "taken" once a booking for it has a
+ * CONFIRMED payment (partially or fully paid). Until then, multiple overlapping Pending or
+ * Confirmed-but-unpaid bookings are allowed to coexist for the same photographer/slot (backup
+ * requests in case a client cancels or never pays) and they do NOT block the public calendar.
  *
- * This service is the single place that (a) checks whether a *paid* conflict
- * already exists before letting a payment confirm a booking, and (b) once a
- * booking's payment IS confirmed, automatically declines every other
- * unpaid request that overlaps the same slot, so a photographer never ends
- * up needing to remember to clean those up by hand.
+ * This service is the single place that (a) checks whether a *paid* conflict already exists
+ * before a payment is allowed to confirm a booking, and (b) once a booking's payment IS
+ * confirmed, moves every other accepted/waitlisted booking for the same slot onto the WAITLIST.
+ * Nothing is ever cancelled automatically.
  *
- * A booking can hold several photography sessions (its own first schedule
- * plus any additional ones). Every session with a known end time is checked
- * separately — against both other bookings' first schedules and their
- * additional sessions. A session whose duration hasn't been confirmed
- * (end_time null) is skipped: we never guess a window for it.
+ * "Overlap" uses the same rule as the public calendar: a booking occupies each of its sessions
+ * PLUS the photographer's buffer time after it (see Booking::occupiedWindows()). A booking can
+ * hold several sessions; every session with a known end time is checked separately. A session
+ * whose duration hasn't been confirmed (end_time null) is skipped: we never guess a window.
  *
- * Callers (SubmitPaymentAction, ManuallyVerifyPaymentAction) must run both
- * methods inside a DB transaction with the photographer row locked
- * (`User::lockForUpdate()`), the same way CreateBookingAction does, so two
- * payments confirming at the same instant can't both win the same slot.
+ * Callers must run these methods inside a DB transaction with the photographer row locked
+ * (`User::lockForUpdate()`), so two payments confirming at the same instant can't both win.
  */
 class SlotConflictService
 {
@@ -40,119 +34,123 @@ class SlotConflictService
     }
 
     /**
-     * Other bookings of the same photographer that have ANY session (first or
-     * additional) overlapping the given window, limited to $statuses.
+     * The OTHER booking (same photographer) that already holds a paid, confirmed slot
+     * overlapping ANY of $booking's sessions, or null. A booking with a pending
+     * cancellation request still holds its slot: it is only released once the
+     * cancellation is APPROVED (status becomes Cancelled).
      */
-    protected function overlappingBookings(Booking $except, string $date, string $start, string $end, array $statuses)
+    public function findPaidConflict(Booking $booking): ?Booking
     {
-        return $except->photographer->bookingsAsPhotographer()
-            ->where('id', '!=', $except->id)
-            ->whereIn('status', $statuses)
-            ->where(function ($q) use ($date, $start, $end) {
-                $q->where(fn ($p) => $p->where('event_date', $date)
-                        ->where('start_time', '<', $end)
-                        ->where('end_time', '>', $start))
-                  ->orWhereHas('schedules', fn ($s) => $s->where('event_date', $date)
-                        ->where('start_time', '<', $end)
-                        ->where('end_time', '>', $start));
-            });
+        return $booking->overlappingBookings([BookingStatus::Confirmed])
+            ->first(fn (Booking $other) => in_array($other->payment_status, [
+                BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid,
+            ], true));
     }
 
     /**
-     * Call this immediately before marking $booking's payment as confirmed.
-     * Throws if some OTHER booking for the same photographer already has a
-     * confirmed payment overlapping ANY of this booking's sessions — meaning
-     * this booking lost the race and its payment needs manual resolution
-     * (refund/reassignment) rather than being used to confirm a slot that's
-     * already gone.
+     * Call this immediately before marking $booking's payment as confirmed. Throws if some
+     * OTHER booking already has a confirmed payment overlapping ANY of this booking's
+     * sessions — this booking lost the race and its payment needs manual resolution
+     * (refund / another slot). The payment record itself is never discarded.
      */
     public function assertNoPaidConflict(Booking $booking): void
     {
-        foreach ($booking->allSchedules() as $schedule) {
-            // No confirmed duration = nothing to range-check (never guessed).
-            if ($schedule->end_time === null) {
-                continue;
-            }
-
-            $conflict = $this->overlappingBookings(
-                $booking,
-                Carbon::parse($schedule->event_date)->toDateString(),
-                $schedule->start_time,
-                $schedule->end_time,
-                [BookingStatus::Confirmed],
-            )->whereIn('payment_status', [BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid])
-             ->exists();
-
-            if ($conflict) {
-                throw ValidationException::withMessages([
-                    'booking' => [
-                        'One of this booking\'s sessions was already paid for and confirmed by another client while this payment was pending. '
-                        .'This payment needs manual review — it was NOT applied. Please contact the client about a refund or a new slot.',
-                    ],
-                ]);
-            }
+        if ($this->findPaidConflict($booking) !== null) {
+            throw ValidationException::withMessages([
+                'booking' => [
+                    'One of this booking\'s sessions was already paid for and confirmed by another client. '
+                    .'This payment was NOT applied and the booking stays on the waitlist. '
+                    .'Please contact the client about a refund or a new slot.',
+                ],
+            ]);
         }
     }
 
     /**
-     * Call this right after $booking's payment is confirmed. Finds every
-     * other Pending or Confirmed-but-unpaid booking overlapping ANY of this
-     * booking's sessions and auto-cancels them, notifying each affected
-     * client with a clear reason instead of leaving them hanging on a
-     * request that can no longer be accepted.
+     * True while the released slot has been offered to a booking that has not paid yet
+     * (offered = Confirmed + slot_offered_at set, payment still pending or under review).
+     * Only ONE such offer may be outstanding per slot, so two waitlisted clients are never
+     * both pushed back to Confirmed for the same time.
      */
-    public function releaseConflictingBookings(Booking $confirmedBooking): int
+    public function hasOutstandingOffer(Booking $booking): bool
     {
-        $rivals = collect();
+        return $booking->overlappingBookings([BookingStatus::Confirmed])
+            ->contains(fn (Booking $other) => $other->slot_offered_at !== null
+                && in_array($other->payment_status, [
+                    BookingPaymentStatus::Pending, BookingPaymentStatus::PendingVerification,
+                ], true));
+    }
 
-        foreach ($confirmedBooking->allSchedules() as $schedule) {
-            if ($schedule->end_time === null) {
+    /**
+     * Call this right after $holder's payment is confirmed. Every other ACCEPTED booking
+     * (Confirmed, not yet paid) or already-Waitlisted booking that overlaps ANY of the
+     * holder's sessions is moved to / kept on the WAITLIST — never cancelled:
+     *  - its payment_status and any submitted Payment rows are left exactly as they were;
+     *  - its payment window is cleared, so it cannot expire while waiting;
+     *  - superseded_by_booking_id records which booking currently holds the slot.
+     * Still-Pending requests are left alone (the photographer has not decided on them;
+     * AcceptBookingAction waitlists them if they are accepted while the slot is held).
+     */
+    public function waitlistConflictingBookings(Booking $holder): int
+    {
+        $rivals = $holder->overlappingBookings([BookingStatus::Confirmed, BookingStatus::Waitlisted])
+            // Safety net: never touch a booking that is itself paid-confirmed.
+            ->reject(fn (Booking $b) => in_array($b->payment_status, [
+                BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid,
+            ], true))
+            ->values();
+
+        $rivals->load('client');
+
+        foreach ($rivals as $rival) {
+               $wasWaitlisted = $rival->status === BookingStatus::Waitlisted;
+   \App\Models\BookingSlotOffer::closeOpenFor($rival, \App\Models\BookingSlotOffer::WITHDRAWN);
+
+            $rival->update([
+                'status' => BookingStatus::Waitlisted,
+                'superseded_by_booking_id' => $holder->id,
+                'hold_expires_at' => null,
+                'slot_offered_at' => null,
+                'slot_offer_accepted_at' => null,
+            ]);
+
+            // Already waiting (behind a booking that was since cancelled): just re-point it.
+            if ($wasWaitlisted) {
                 continue;
             }
 
-            $rivals = $rivals->merge(
-                $this->overlappingBookings(
-                    $confirmedBooking,
-                    Carbon::parse($schedule->event_date)->toDateString(),
-                    $schedule->start_time,
-                    $schedule->end_time,
-                    [BookingStatus::Pending, BookingStatus::Confirmed],
-                )->with('client')->get()
-            );
-        }
-
-        $rivals = $rivals
-            ->unique('id')
-            // Safety net: never auto-cancel something that is itself
-            // already paid-confirmed — assertNoPaidConflict() should have
-            // stopped us getting here, but a booking can't be silently
-            // cancelled out from under a paying client.
-            ->reject(fn (Booking $b) => in_array($b->payment_status, [
-                BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid,
-            ], true));
-
-        foreach ($rivals as $rival) {
-            $rival->update([
-                'status' => BookingStatus::Cancelled,
-                'payment_status' => BookingPaymentStatus::Cancelled,
-                'cancellation_reason' => 'Automatically declined — another client\'s payment for this same date/time was confirmed first.',
-                // Lets the photographer bring this client back via
-                // "Accommodate Other Reservation" if $confirmedBooking's
-                // reservation later falls through — see
-                // Booking::accommodationCandidates() and AccommodateBookingAction.
-                'superseded_by_booking_id' => $confirmedBooking->id,
-            ]);
-
-            $rival->client->notify(new \App\Notifications\Booking\BookingCancelledNotification($rival->fresh()));
+            $rival->client->notify(new \App\Notifications\Booking\BookingWaitlistedNotification($rival->fresh()));
 
             $this->activityLogger->execute(
                 causer: null,
                 subject: $rival,
-                action: 'booking.auto_declined_slot_taken',
-                description: "Booking #{$rival->id} auto-declined — booking #{$confirmedBooking->id} was confirmed and paid for the same slot.",
+                action: 'booking.waitlisted',
+                description: "Booking #{$rival->id} waitlisted — booking #{$holder->id} was paid and confirmed for the same slot.",
             );
         }
 
         return $rivals->count();
+    }
+
+    /**
+     * Call after a booking that HELD a paid slot is cancelled. Tells the photographer how
+     * many waitlisted clients can now be offered the slot. Nothing is offered automatically.
+     */
+    public function notifySlotReleased(Booking $cancelled): int
+    {
+        $count = $cancelled->accommodationCandidates()->count();
+
+        if ($count > 0) {
+            $cancelled->photographer->notify(new \App\Notifications\Booking\SlotReleasedNotification($cancelled, $count));
+
+            $this->activityLogger->execute(
+                causer: null,
+                subject: $cancelled,
+                action: 'booking.slot_released',
+                description: "Schedule of booking #{$cancelled->id} released; {$count} waitlisted booking(s) can be offered it.",
+            );
+        }
+
+        return $count;
     }
 }

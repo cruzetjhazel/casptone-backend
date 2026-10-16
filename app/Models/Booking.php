@@ -47,7 +47,7 @@ class Booking extends Model
         'reschedule_reason', 'modification_changes', 'modification_decision', 'modification_decided_at', 'cancelled_by',
         'payment_plan', 'payment_status',
         'service_status', 'service_status_updated_at',
-        'custom_hours',
+        'custom_hours', 'slot_offered_at', 'slot_offer_accepted_at',
     ];
 
     protected function casts(): array
@@ -65,6 +65,8 @@ class Booking extends Model
             'location_type' => BookingLocationType::class,
             'cancellation_decision' => CancellationDecision::class,
             'hold_expires_at' => 'datetime',
+               'slot_offered_at' => 'datetime',
+   'slot_offer_accepted_at' => 'datetime',
             'cancellation_requested_at' => 'datetime',
             'cancellation_decided_at' => 'datetime',
             'non_completion_reported_at' => 'datetime',
@@ -195,6 +197,7 @@ class Booking extends Model
     public function isEligibleForExtensionRequest(): bool
     {
         return $this->status === BookingStatus::Confirmed
+            && in_array($this->service_status, [null, ServiceTrackerStatus::Upcoming, ServiceTrackerStatus::EventDay], true)
             && $this->is_custom_package
             && $this->custom_hours !== null;
     }
@@ -333,7 +336,7 @@ class Booking extends Model
      */
     public function isEligibleForCancellationRequest(): bool
     {
-        if ($this->status === BookingStatus::Pending) {
+        if (in_array($this->status, [BookingStatus::Pending, BookingStatus::Waitlisted], true)) {
             return true;
         }
 
@@ -346,35 +349,135 @@ class Booking extends Model
      * been settled — used by BookingObserver to auto-advance the service
      * tracker from null to Upcoming.
      */
-    public function isPaymentSettled(): bool
+       /** An offered schedule the client has not accepted yet: it is not payable until they accept. */
+   public function isAwaitingOfferAcceptance(): bool
+   {
+       return $this->status === BookingStatus::Confirmed
+           && $this->slot_offered_at !== null
+           && $this->slot_offer_accepted_at === null
+           && $this->payment_status === BookingPaymentStatus::Pending;
+   }
+
+   public function slotOffers(): HasMany
+   {
+       return $this->hasMany(BookingSlotOffer::class);
+   }
+
+      public function budgetRequests(): HasMany
+   {
+       return $this->hasMany(BookingBudgetRequest::class);
+   }
+
+   public function isPaymentSettled(): bool
     {
         return in_array($this->payment_status, [BookingPaymentStatus::PartiallyPaid, BookingPaymentStatus::FullyPaid], true);
     }
+    /**
+     * Every photography session of this booking as a time window, INCLUDING the photographer's
+     * buffer after it. This is the same rule the public calendar uses (AvailabilityService):
+     * a booking occupies [start, end + buffer]. A session whose duration is not confirmed yet
+     * (end_time null) is skipped: we never guess a window for it.
+     *
+     * @return \Illuminate\Support\Collection<int, array{start: \Carbon\Carbon, end: \Carbon\Carbon}>
+     */
+    public function occupiedWindows(): \Illuminate\Support\Collection
+    {
+        $buffer = $this->bufferMinutes();
+
+        return $this->allSchedules()
+            ->filter(fn ($s) => $s->end_time !== null)
+            ->map(function ($s) use ($buffer) {
+                $date = \Carbon\Carbon::parse($s->event_date)->toDateString();
+                $start = \Carbon\Carbon::parse($date.' '.$s->start_time);
+                $end = \Carbon\Carbon::parse($date.' '.$s->end_time);
+
+                // A session that runs past midnight (e.g. 23:00 - 01:00) ends the next day.
+                if ($end->lessThanOrEqualTo($start)) {
+                    $end->addDay();
+                }
+
+                return ['start' => $start, 'end' => $end->addMinutes($buffer)];
+            })
+            ->values();
+    }
 
     /**
-     * Other clients who previously requested this exact photographer/date/
-     * time and were auto-declined when THIS booking (or any other booking
-     * for the same overlapping slot) had its payment confirmed first — see
-     * SlotConflictService::releaseConflictingBookings, which is the only
-     * place superseded_by_booking_id gets set. Scoped by slot overlap
-     * rather than strictly to this booking's id so that clients who lost
-     * out across multiple prior rounds (e.g. a previously accommodated
-     * client who also later cancelled) all remain reviewable, per the
-     * "Accommodate Other Reservation" requirement.
+     * Other bookings of the SAME photographer, limited to $statuses, whose occupied windows
+     * (session + buffer, see occupiedWindows()) overlap ANY occupied window of this booking.
+     * Two windows that merely touch (one ends exactly when the other starts) do not overlap.
      *
-     * Only meaningful once this booking itself is Cancelled — call this
-     * after a previously paid/confirmed booking has been cancelled.
+     * @param  array<int, BookingStatus>  $statuses
+     */
+    public function overlappingBookings(array $statuses): \Illuminate\Database\Eloquent\Collection
+    {
+        $mine = $this->occupiedWindows();
+
+        if ($mine->isEmpty()) {
+            return new \Illuminate\Database\Eloquent\Collection();
+        }
+
+        // Pre-filter in SQL by date (a day either side, because a buffer or a late session can
+        // spill over midnight), then compare the exact windows in PHP.
+        $dates = $mine
+            ->flatMap(fn ($w) => [
+                $w['start']->copy()->subDay()->toDateString(),
+                $w['start']->toDateString(),
+                $w['end']->toDateString(),
+                $w['end']->copy()->addDay()->toDateString(),
+            ])
+            ->unique()
+            ->values()
+            ->all();
+
+        $candidates = Booking::query()
+            ->where('photographer_id', $this->photographer_id)
+            ->where('id', '!=', $this->id)
+            ->whereIn('status', $statuses)
+            ->where(function ($q) use ($dates) {
+                $q->whereIn('event_date', $dates)
+                  ->orWhereHas('schedules', fn ($s) => $s->whereIn('event_date', $dates));
+            })
+            ->with('schedules')
+            ->get();
+
+        return $candidates->filter(function (Booking $other) use ($mine) {
+            foreach ($other->occupiedWindows() as $theirs) {
+                foreach ($mine as $w) {
+                    if ($w['start']->lt($theirs['end']) && $w['end']->gt($theirs['start'])) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        })->values();
+    }
+
+    /**
+     * Waitlisted bookings (same photographer) whose schedule (including buffer time) overlaps
+     * ANY session of this booking, OLDEST REQUEST FIRST. Meant to be called on a booking that
+     * held the slot and was cancelled: these are the clients who lost the slot to it and are
+     * still waiting.
+     *
+     * Priority rule (explicit and consistent): created_at ascending, then id. The
+     * photographer is offered this list in that order and the UI pre-selects the first.
+     * Only bookings that are still Waitlisted are returned, so anything that has since
+     * expired, been cancelled/declined or been confirmed is never reactivated, and
+     * bookings whose event date has already passed are left out.
      */
     public function accommodationCandidates(): \Illuminate\Database\Eloquent\Builder
     {
+        $today = now()->toDateString();
+
+        $ids = $this->overlappingBookings([BookingStatus::Waitlisted])
+            ->filter(fn (Booking $b) => \Carbon\Carbon::parse($b->event_date)->toDateString() >= $today)
+            ->pluck('id')
+            ->all();
+
         return Booking::query()
-            ->where('photographer_id', $this->photographer_id)
-            ->where('event_date', $this->event_date)
-            ->where('id', '!=', $this->id)
-            ->where('status', BookingStatus::Cancelled)
-            ->whereNotNull('superseded_by_booking_id')
-            ->where('start_time', '<', $this->end_time)
-            ->where('end_time', '>', $this->start_time)
+            ->whereIn('id', $ids)
+            ->oldest()
+            ->orderBy('id')
             ->with('client');
     }
         /**
@@ -498,14 +601,16 @@ class Booking extends Model
     public function clientActions(): array
     {
         $open = $this->isEligibleForCancellationRequest();
+        // A waitlisted booking can be cancelled, but not modified or moved while it has no schedule.
+        $changeable = $open && $this->status !== BookingStatus::Waitlisted;
         $noPendingChange = ! $this->hasPendingChangeRequest();
         $singleSession = $this->end_time !== null && ! $this->schedules()->exists();
         $deadline = $this->noShowReportDeadline();
         $started = $this->serviceStartsAt()?->isPast() ?? false;
 
         return [
-            'can_modify' => $open && $noPendingChange && $this->hasEnoughNoticeForChanges(),
-            'can_reschedule' => $open && $noPendingChange && $singleSession && $this->hasEnoughNoticeForChanges(),
+            'can_modify' => $changeable && $noPendingChange && $this->hasEnoughNoticeForChanges(),
+            'can_reschedule' => $changeable && $noPendingChange && $singleSession && $this->hasEnoughNoticeForChanges(),
             'can_postpone' => $this->isEligibleForPostponement() && $noPendingChange && $singleSession,
             'can_cancel' => $open && ! $this->hasPendingCancellationRequest(),
             'can_report_photographer_no_show' => $this->canClientReportPhotographerNoShow(),
@@ -516,6 +621,34 @@ class Booking extends Model
                 && $deadline !== null
                 && now()->gt($deadline),
         ];
+    }
+
+    /**
+     * Plain-language explanation of a state that is easy to misread (waiting for a
+     * schedule / schedule offered again). Null when the status label says it all.
+     */
+    public function statusNotice(): ?string
+    {
+        if ($this->status === BookingStatus::Waitlisted) {
+            if ($this->payment_status === BookingPaymentStatus::PendingVerification) {
+                return 'Another booking currently holds this schedule. Your payment reference is kept on record. If the schedule becomes available it may be offered to you without paying again. If it does not, and you already sent a payment, the photographer will arrange your refund.';
+            }
+
+            return 'Another booking currently holds this schedule. Your reservation may be considered if the slot becomes available.';
+        }
+
+        if ($this->status === BookingStatus::Confirmed && $this->slot_offered_at !== null) {
+            if ($this->payment_status === BookingPaymentStatus::Pending) {
+                   return $this->slot_offer_accepted_at === null
+       ? 'The schedule is available again. Accept the offer before the reservation deadline to be able to pay for it.'
+       : 'The schedule is available again. You can proceed with payment before the reservation deadline.';
+            }
+            if ($this->payment_status === BookingPaymentStatus::PendingVerification) {
+                return 'The schedule is available again. Your submitted payment is waiting for the photographer to confirm it.';
+            }
+        }
+
+        return null;
     }
 
     /** null | open | awaiting_admin | disputed | upheld | overturned | final (old rows) */

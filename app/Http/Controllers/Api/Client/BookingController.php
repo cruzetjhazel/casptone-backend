@@ -39,6 +39,10 @@ class BookingController extends Controller
     {
         $this->authorize('create', Booking::class);
 
+        if (! $request->user()->hasVerifiedEmail()) {
+            return $this->error('Please verify your email address before booking a photographer.', 403);
+        }
+
         $booking = $action->execute($request->user(), $request->validated());
 
         return $this->success(new BookingResource($booking), 'Booking request submitted.', 201);
@@ -88,6 +92,24 @@ class BookingController extends Controller
         return $this->success(new BookingResource($booking), 'Dispute submitted.');
     }
 
+        public function acceptOffer(Request $request, Booking $booking, \App\Actions\Booking\AcceptSlotOfferAction $action)
+    {
+        abort_unless($request->user()->isClient() && $booking->client_id === $request->user()->id, 403);
+
+        $booking = $action->execute($booking);
+
+        return $this->success(new BookingResource($booking), 'Offer accepted. You can now pay to confirm the schedule.');
+    }
+
+    public function declineOffer(Request $request, Booking $booking, \App\Actions\Booking\DeclineSlotOfferAction $action)
+    {
+        abort_unless($request->user()->isClient() && $booking->client_id === $request->user()->id, 403);
+
+        $booking = $action->execute($booking);
+
+        return $this->success(new BookingResource($booking), 'Offer declined. Your booking is back on the waitlist.');
+    }
+
     public function requestReschedule(RequestBookingRescheduleRequest $request, Booking $booking, RequestBookingRescheduleAction $action)
     {
         $this->authorize('requestReschedule', $booking);
@@ -102,11 +124,14 @@ class BookingController extends Controller
     {
         $this->authorize('requestReschedule', $booking);
 
-        $request->validate(['date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today']]);
+        $request->validate([
+            'date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'type' => ['nullable', 'in:standard,weather,venue,agreed'],
+        ]);
 
         return $this->success([
             'date' => $request->query('date'),
-            'start_times' => $action->availableSlots($booking, $request->query('date')),
+            'start_times' => $action->availableSlots($booking, $request->query('date'), $request->query('type', 'standard')),
         ]);
     }
 

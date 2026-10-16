@@ -55,7 +55,11 @@ class RequestBookingCancellationAction
 
             $fresh = $booking->fresh();
 
-            $fresh->photographer->notify(new BookingCancelledNotification($fresh));
+               $fresh->photographer->notify(new BookingCancelledNotification($fresh));
+
+    // An unpaid, offered schedule the client gives up passes to the next waitlisted client.
+       app(OfferReleasedSlotAction::class)->passOnOffer($fresh);
+   \App\Models\BookingBudgetRequest::closeOpenFor($fresh, \App\Models\BookingBudgetRequest::WITHDRAWN);
 
             $this->activityLogger->execute(
                 causer: $fresh->client,

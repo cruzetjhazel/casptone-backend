@@ -33,7 +33,8 @@ class RejectBookingAction
             'hold_expires_at' => null,
         ]);
 
-        $fresh = $booking->fresh();
+   $fresh = $booking->fresh();
+   \App\Models\BookingBudgetRequest::closeOpenFor($fresh, \App\Models\BookingBudgetRequest::WITHDRAWN);
         $fresh->client->notify(new \App\Notifications\Booking\BookingRejectedNotification($fresh));
 
         $this->activityLogger->execute(

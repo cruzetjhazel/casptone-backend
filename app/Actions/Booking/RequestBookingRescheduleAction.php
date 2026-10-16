@@ -24,7 +24,7 @@ class RequestBookingRescheduleAction
      *
      * @return array<int, string>
      */
-    public function availableSlots(Booking $booking, string $date): array
+    public function availableSlots(Booking $booking, string $date, string $type = 'standard'): array
     {
         if ($booking->end_time === null) {
             return [];
@@ -36,7 +36,9 @@ class RequestBookingRescheduleAction
             $booking->photographer,
             $date,
             $coverage + $booking->bufferMinutes(),
-            $booking->id
+            $booking->id,
+            // Weather / venue / agreed postponements may move to a later time the same day.
+            $type === 'standard' ? null : 0
         );
     }
 
@@ -85,7 +87,7 @@ class RequestBookingRescheduleAction
             ]);
         }
 
-        if (! in_array($startTime, $this->availableSlots($booking, $eventDate), true)) {
+        if (! in_array($startTime, $this->availableSlots($booking, $eventDate, $type), true)) {
             throw ValidationException::withMessages([
                 'start_time' => ['This date and time is not available for booking.'],
             ]);

@@ -7,6 +7,7 @@ use App\Enums\BookingStatus;
 use App\Enums\CancellationDecision;
 use App\Models\Booking;
 use App\Notifications\Booking\BookingCancelledNotification;
+use App\Services\Photographer\Booking\SlotConflictService;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -15,17 +16,22 @@ use Illuminate\Validation\ValidationException;
  */
 class CancelBookingByPhotographerAction
 {
-    public function __construct(protected LogActivityAction $activityLogger)
-    {
+    public function __construct(
+        protected LogActivityAction $activityLogger,
+        protected SlotConflictService $slotConflictService,
+    ) {
     }
 
     public function execute(Booking $booking, string $reason): Booking
     {
-        if ($booking->status !== BookingStatus::Confirmed || ! $booking->isEligibleForCancellationRequest()) {
+        if (! in_array($booking->status, [BookingStatus::Confirmed, BookingStatus::Waitlisted], true) || ! $booking->isEligibleForCancellationRequest()) {
             throw ValidationException::withMessages([
                 'status' => ['Only a confirmed booking that has not started yet can be cancelled. To turn down a new request, decline it instead.'],
             ]);
         }
+
+        // Did this booking hold a paid slot? Then cancelling it releases that slot.
+        $heldSlot = $booking->status === BookingStatus::Confirmed && $booking->isPaymentSettled();
 
         $updates = [
             'status' => BookingStatus::Cancelled,
@@ -52,7 +58,14 @@ class CancelBookingByPhotographerAction
 
         $fresh = $booking->fresh();
 
-        $fresh->client->notify(new BookingCancelledNotification($fresh));
+    $fresh->client->notify(new BookingCancelledNotification($fresh));
+
+       app(OfferReleasedSlotAction::class)->passOnOffer($fresh);
+   \App\Models\BookingBudgetRequest::closeOpenFor($fresh, \App\Models\BookingBudgetRequest::WITHDRAWN);
+
+        if ($heldSlot) {
+            app(OfferReleasedSlotAction::class)->execute($fresh);
+        }
 
         $this->activityLogger->execute(
             causer: $fresh->photographer,

@@ -10,6 +10,15 @@ class PhotographerProfileResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        // Same 7-day rule as the client. Null means no waiting period.
+        $reactivatedAt = $this->user?->reactivated_at;
+        $deactivateAvailableOn = $reactivatedAt
+            ? \Illuminate\Support\Carbon::parse($reactivatedAt)->addDays(7)
+            : null;
+        if ($deactivateAvailableOn && ! $deactivateAvailableOn->isFuture()) {
+            $deactivateAvailableOn = null;
+        }
+
         return [
             'id' => $this->id,
             'bio' => $this->bio,
@@ -21,6 +30,7 @@ class PhotographerProfileResource extends JsonResource
             'instagram' => $this->instagram,
             'website' => $this->website,
             'is_complete' => $this->isComplete(),
+            'deactivate_available_on' => $deactivateAvailableOn?->toISOString(),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

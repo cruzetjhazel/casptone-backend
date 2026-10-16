@@ -7,6 +7,7 @@ use App\Enums\BookingPaymentStatus;
 use App\Enums\BookingStatus;
 use App\Enums\PaymentMatchingStatus;
 use App\Enums\PaymentPlan;
+use App\Models\Booking;
 use App\Models\Payment;
 use App\Models\User;
 use App\Services\Photographer\Booking\SlotConflictService;
@@ -59,27 +60,49 @@ class ManuallyVerifyPaymentAction
         // meantime, we surface that to the photographer as an error rather
         // than silently downgrading it — they need to know before deciding
         // how to handle this client's money.
-        DB::transaction(function () use ($booking, $plan) {
+                DB::transaction(function () use ($booking, $payment, $plan, $verifier, $notes) {
             User::where('id', $booking->photographer_id)->lockForUpdate()->firstOrFail();
-            $this->slotConflictService->assertNoPaidConflict($booking);
 
-            $booking->update([
+            // Re-read both rows under the lock, so a double-click, a second tab or a
+            // simultaneous cancellation approval can never apply this payment twice
+            // or confirm a booking that is no longer active.
+            $lockedPayment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
+            if (! $lockedPayment->isAwaitingManualReview()) {
+                throw ValidationException::withMessages([
+                    'payment' => ['This payment has already been reviewed.'],
+                ]);
+            }
+
+            $lockedBooking = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($lockedBooking->status, [BookingStatus::Confirmed, BookingStatus::Waitlisted], true)) {
+                throw ValidationException::withMessages([
+                    'payment' => ['This booking is no longer active, so the payment was NOT applied. Please settle it with the client directly.'],
+                ]);
+            }
+
+            // Throws if another booking already holds an overlapping paid slot.
+            $this->slotConflictService->assertNoPaidConflict($lockedBooking);
+
+            $lockedBooking->update([
                 'payment_status' => $plan === PaymentPlan::Full
                     ? BookingPaymentStatus::FullyPaid
                     : BookingPaymentStatus::PartiallyPaid,
                 'status' => BookingStatus::Confirmed,
+                'superseded_by_booking_id' => null,
             ]);
 
-            $this->slotConflictService->releaseConflictingBookings($booking->fresh());
-        });
+            $lockedPayment->update([
+                'matching_status' => PaymentMatchingStatus::ManuallyVerified,
+                'verified_by' => $verifier->id,
+                'verified_at' => now(),
+                'verification_action' => 'verified',
+                'verification_notes' => $notes,
+            ]);
 
-        $payment->update([
-            'matching_status' => PaymentMatchingStatus::ManuallyVerified,
-            'verified_by' => $verifier->id,
-            'verified_at' => now(),
-            'verification_action' => 'verified',
-            'verification_notes' => $notes,
-        ]);
+            // Other accepted bookings for this slot go to the waitlist (never cancelled).
+                \App\Models\BookingSlotOffer::closeOpenFor($lockedBooking, \App\Models\BookingSlotOffer::ACCEPTED);
+    $this->slotConflictService->waitlistConflictingBookings($lockedBooking->fresh());
+        });
 
         $freshBooking = $booking->fresh();
         $freshPayment = $payment->fresh();

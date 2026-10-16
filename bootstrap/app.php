@@ -76,6 +76,16 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage() ?: 'The request could not be completed.',
+                    'errors' => null,
+                ], $e->getStatusCode());
+            }
+        });
+
         $exceptions->render(function (Throwable $e, Request $request) {
             if ($request->is('api/*') && ! app()->environment(['local', 'testing'])) {
                 return response()->json([

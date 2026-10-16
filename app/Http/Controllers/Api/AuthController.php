@@ -24,6 +24,7 @@ class AuthController extends Controller
     public function register(RegisterClientRequest $request, RegisterClientAction $action)
     {
         $user = $action->execute($request->validated());
+        $this->sendVerificationEmail($user);
         $token = $user->createToken('api')->plainTextToken;
 
         return $this->success(
@@ -142,9 +143,58 @@ class AuthController extends Controller
     {
         return $this->success(new UserResource($request->user()));
     }
+
+    /**
+     * Opened from the link in the verification email (signed URL, no login needed).
+     * Always ends in a redirect to the React app.
+     */
+    public function verifyEmail(Request $request, $id, $hash)
+    {
+        $frontend = rtrim(config('frontend.url'), '/');
+
+        if (! $request->hasValidSignature()) {
+            return redirect("{$frontend}/email-verified?status=expired");
+        }
+
+        $user = User::find($id);
+
+        if (! $user || ! hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
+            return redirect("{$frontend}/email-verified?status=invalid");
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+            event(new \Illuminate\Auth\Events\Verified($user));
+        }
+
+        return redirect("{$frontend}/email-verified?status=success");
+    }
+
+    public function resendVerification(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return $this->success(null, 'Your email is already verified.');
+        }
+
+        $user->sendEmailVerificationNotification();
+
+        return $this->success(null, 'Verification email sent.');
+    }
+
+    private function sendVerificationEmail(User $user): void
+    {
+        try {
+            $user->sendEmailVerificationNotification();
+        } catch (\Throwable $e) {
+            report($e); // signup must not fail just because the mail failed
+        }
+    }
     public function registerPhotographer(RegisterPhotographerRequest $request, RegisterPhotographerAction $action)
     {
         $user = $action->execute($request->validated());
+        $this->sendVerificationEmail($user);
         $token = $user->createToken('api')->plainTextToken;
 
         return $this->success(

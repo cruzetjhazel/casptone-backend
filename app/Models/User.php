@@ -11,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     use HasApiTokens, HasFactory, Notifiable;
 
@@ -192,10 +192,13 @@ class User extends Authenticatable
 
     public function hasOngoingBookings(): bool
     {
-        return $this->bookingsAsClient()
+        $bookings = $this->isPhotographer() ? $this->bookingsAsPhotographer() : $this->bookingsAsClient();
+
+        return $bookings
             ->whereIn('status', [
                 \App\Enums\BookingStatus::Pending,
                 \App\Enums\BookingStatus::Confirmed,
+                \App\Enums\BookingStatus::Waitlisted,
             ])
             ->exists();
     }

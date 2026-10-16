@@ -13,7 +13,12 @@ class BookingResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'client' => ['id' => $this->client->id, 'name' => $this->client->name],
+            'client' => [
+                'id' => $this->client->id,
+                'name' => $this->client->name,
+                // Only a true/false flag. The client's actual email stays private.
+                'email_verified' => $this->client->email_verified_at !== null,
+            ],
             'photographer' => ['id' => $this->photographer->id, 'name' => $this->photographer->name],
             'is_custom_package' => $this->is_custom_package,
             'package_snapshot' => $this->package_snapshot,
@@ -96,9 +101,22 @@ class BookingResource extends JsonResource
             'remaining_balance' => $this->remainingBalance(),
             'payment_actions' => [
                 'can_submit_online_payment' => $this->status?->value === 'confirmed'
-                    && $this->payment_status?->value === 'pending',
-                'can_record_onsite_payment' => $this->isEligibleForOnsitePayment(),
+                        && $this->payment_status?->value === 'pending'
+    && ! $this->isAwaitingOfferAcceptance(),
+                    'can_record_onsite_payment' => $this->isEligibleForOnsitePayment(),
+    'can_accept_slot_offer' => $this->isAwaitingOfferAcceptance(),
+    'can_decline_slot_offer' => $this->status?->value === 'confirmed'
+        && $this->slot_offered_at !== null
+        && $this->payment_status?->value === 'pending',
             ],
+            // Plain-language explanation for waitlisted / schedule-offered bookings (null otherwise).
+            'status_notice' => $this->statusNotice(),
+            'is_waitlisted' => $this->status === \App\Enums\BookingStatus::Waitlisted,
+                   'slot_offered_at' => $this->slot_offered_at,
+   ...\App\Models\BookingBudgetRequest::summaryFor($this->resource),
+    'slot_offer_accepted_at' => $this->slot_offer_accepted_at,
+    'awaiting_offer_acceptance' => $this->isAwaitingOfferAcceptance(),
+    'slot_offer_deadline' => $this->isAwaitingOfferAcceptance() ? $this->hold_expires_at : null,
             'service_status' => $this->service_status?->value,
             'service_status_updated_at' => $this->service_status_updated_at,
             'has_reviewed' => $this->review()->exists(),

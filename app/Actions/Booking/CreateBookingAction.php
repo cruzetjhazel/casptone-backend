@@ -560,6 +560,9 @@ class CreateBookingAction
         $snapshot = [
             'base_fee' => (string) ($config->base_fee ?? 0),
             'duration_minutes' => $durationComponent->duration_minutes,
+            'pricing_model' => 'fixed',
+            'allows_multiple_sessions' => (bool) $config->allows_multiple_sessions,
+            'max_sessions' => $config->max_sessions,
             'buffer_minutes' => $bufferMinutes,
             'components' => $components->map(fn ($c) => [
                 'label' => $c->label,

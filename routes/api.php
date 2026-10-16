@@ -53,6 +53,11 @@ Route::prefix('auth')->group(function () {
     // This is only a loose per-IP backstop.
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:30,1');
 
+    // The route name must stay "verification.verify": Laravel's built-in email uses it.
+    Route::get('email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
+        ->middleware('throttle:6,1')
+        ->name('verification.verify');
+
     Route::middleware('throttle:auth')->group(function () {
         Route::post('register-client', [AuthController::class, 'register']);
         Route::post('reactivate', [AuthController::class, 'reactivate']);
@@ -65,6 +70,7 @@ Route::prefix('auth')->group(function () {
     // a shared/office IP into one 5-per-minute bucket).
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('email/resend', [AuthController::class, 'resendVerification'])->middleware('throttle:6,1');
         Route::get('me', [AuthController::class, 'me']);
     });
 });
@@ -76,8 +82,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('photographer')->group(function () {
         Route::get('application', [PhotographerApplicationController::class, 'show']);
         Route::patch('application', [PhotographerApplicationController::class, 'update']);
-        Route::post('application/submit', [PhotographerApplicationController::class, 'submit']);
-        Route::post('application/reapply', [PhotographerApplicationController::class, 'reapply']);
+        Route::post('application/submit', [PhotographerApplicationController::class, 'submit'])->middleware('verified');
+        Route::post('application/reapply', [PhotographerApplicationController::class, 'reapply'])->middleware('verified');
         Route::get('application/documents/{type}', [PhotographerApplicationController::class, 'downloadDocument']);
         });
 
@@ -93,6 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 Route::post('auth/forgot-password', [PasswordResetController::class, 'forgotPassword'])->middleware('throttle:auth');
 Route::post('auth/reset-password', [PasswordResetController::class, 'resetPassword'])->middleware('throttle:auth');
+Route::post('auth/reset-password/validate', [PasswordResetController::class, 'validateToken'])->middleware('throttle:30,1');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('client')->group(function () {
@@ -131,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('profile', [ProfileController::class, 'update']);
         Route::get('profile/completeness', [ProfileController::class, 'completeness']);
         Route::post('change-password', [ProfileController::class, 'changePassword']);
+        Route::post('deactivate', [ProfileController::class, 'deactivate']);
 
         Route::get('portfolio', [PortfolioController::class, 'index']);
         Route::post('portfolio', [PortfolioController::class, 'store']);
@@ -205,6 +213,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('bookings', [ClientBookingController::class, 'store']);
         Route::get('bookings/{booking}', [ClientBookingController::class, 'show']);
         Route::post('bookings/{booking}/request-cancellation', [ClientBookingController::class, 'requestCancellation']);
+            Route::post('bookings/{booking}/accept-offer', [ClientBookingController::class, 'acceptOffer']);
+       Route::post('bookings/{booking}/budget-request', [\App\Http\Controllers\Api\Client\BudgetRequestController::class, 'store']);
+   Route::post('bookings/{booking}/budget-request/accept', [\App\Http\Controllers\Api\Client\BudgetRequestController::class, 'accept']);
+   Route::post('bookings/{booking}/budget-request/reject', [\App\Http\Controllers\Api\Client\BudgetRequestController::class, 'reject']);
+   Route::post('bookings/{booking}/decline-offer', [ClientBookingController::class, 'declineOffer']);
         Route::post('bookings/{booking}/report-non-completion', [ClientBookingController::class, 'reportNonCompletion']);
         Route::post('bookings/{booking}/dispute-non-completion', [ClientBookingController::class, 'disputeNonCompletion']);
         Route::post('bookings/{booking}/reschedule', [ClientBookingController::class, 'requestReschedule']);
@@ -220,7 +233,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('bookings', [PhotographerBookingController::class, 'index']);
         Route::get('bookings/{booking}', [PhotographerBookingController::class, 'show']);
         Route::post('bookings/{booking}/accept', [PhotographerBookingController::class, 'accept']);
-        Route::post('bookings/{booking}/reject', [PhotographerBookingController::class, 'reject']);
+           Route::post('bookings/{booking}/reject', [PhotographerBookingController::class, 'reject']);
+   Route::post('bookings/{booking}/budget-request/respond', [\App\Http\Controllers\Api\Photographer\BudgetRequestController::class, 'respond']);
         Route::post('bookings/{booking}/report-non-completion', [PhotographerBookingController::class, 'reportNonCompletion']);
         Route::post('bookings/{booking}/dispute-non-completion', [PhotographerBookingController::class, 'disputeNonCompletion']);
         Route::post('bookings/{booking}/cancellation/approve', [PhotographerBookingController::class, 'approveCancellation']);
@@ -267,8 +281,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('admin/users')->group(function () {
         Route::get('/', [AdminUserController::class, 'index']);
         Route::get('{user}', [AdminUserController::class, 'show']);
+        Route::get('{user}/suspension-impact', [AdminUserController::class, 'suspensionImpact']);
         Route::post('{user}/suspend', [AdminUserController::class, 'suspend']);
         Route::post('{user}/reactivate', [AdminUserController::class, 'reactivate']);
+        Route::patch('{user}/contact-number', [AdminUserController::class, 'updateContactNumber']);
     });
 
     Route::prefix('admin/appeals')->group(function () {

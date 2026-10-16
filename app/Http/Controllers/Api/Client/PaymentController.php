@@ -54,7 +54,8 @@ class PaymentController extends Controller
             'payment_plan' => $booking->payment_plan?->value,
             'payment_actions' => [
                 'can_submit_online_payment' => $booking->status->value === 'confirmed'
-                    && $booking->payment_status->value === 'pending',
+                        && $booking->payment_status->value === 'pending'
+    && ! $booking->isAwaitingOfferAcceptance(),
             ],
         ]);
     }

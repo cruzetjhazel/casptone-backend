@@ -145,7 +145,7 @@ class AvailabilityService
      *
      * @return string[] "HH:mm" values, in the photographer's configured step
      */
-    public function getAvailableStartTimes(User $photographer, string $date, int $durationMinutes, ?int $excludeBookingId = null): array
+    public function getAvailableStartTimes(User $photographer, string $date, int $durationMinutes, ?int $excludeBookingId = null, ?int $minNoticeHours = null): array
     {
         $stepMinutes = $this->slotStepMinutes($photographer);
         $carbonDate = Carbon::parse($date);
@@ -189,7 +189,7 @@ class AvailabilityService
             $windowsForDate
         );
 
-        return $this->availableStartTimes($date, $periods, $blocks, $bookings, $durationMinutes, $stepMinutes);
+        return $this->availableStartTimes($date, $periods, $blocks, $bookings, $durationMinutes, $stepMinutes, $minNoticeHours);
     }
 
     /** Buffer saved with the booking (fixed package or custom package snapshot). */
@@ -318,7 +318,7 @@ class AvailabilityService
      * Public-facing single-date entry point kept separate from the
      * multi-period walker so getAvailableStartTimes() can format dates.
      */
-    private function availableStartTimes(string $dateStr, array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes): array
+    private function availableStartTimes(string $dateStr, array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes, ?int $minNoticeHours = null): array
     {
         if (empty($periods)) {
             return [];
@@ -328,7 +328,7 @@ class AvailabilityService
             return [];
         }
 
-        return $this->startTimesForPeriods($periods, $blocks, $bookings, $durationMinutes, $stepMinutes, $dateStr);
+        return $this->startTimesForPeriods($periods, $blocks, $bookings, $durationMinutes, $stepMinutes, $dateStr, $minNoticeHours);
     }
 
     /**
@@ -336,7 +336,7 @@ class AvailabilityService
      * whose [start, start+duration] doesn't overlap a block or booking, and
      * doesn't spill past the end of its own period.
      */
-    private function startTimesForPeriods(array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes, ?string $dateStrForBookings = null): array
+    private function startTimesForPeriods(array $periods, Collection $blocks, Collection $bookings, int $durationMinutes, int $stepMinutes, ?string $dateStrForBookings = null, ?int $minNoticeHours = null): array
     {
         $busyRanges = [];
 
@@ -368,6 +368,8 @@ class AvailabilityService
         }
 
         $slots = [];
+        // Too-short notice can't be paid for (see BookingDeadlineService), so don't offer it.
+        $earliestStart = Carbon::now()->addHours($minNoticeHours ?? (int) config('platform.min_notice_hours', 24));
 
         foreach ($periods as [$periodStart, $periodEnd]) {
             $cursor = $periodStart->copy();
@@ -389,7 +391,7 @@ class AvailabilityService
 
                 $formatted = $cursor->format('H:i');
                 // Never offer a start time that has already passed (matters for today's date).
-                if (! $overlaps && $cursor->gt(Carbon::now()) && ! in_array($formatted, $slots, true)) {
+                if (! $overlaps && $cursor->gt($earliestStart) && ! in_array($formatted, $slots, true)) {
                     $slots[] = $formatted;
                 }
 

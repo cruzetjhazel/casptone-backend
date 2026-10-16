@@ -11,6 +11,8 @@ use App\Enums\PaymentType;
 use App\Models\Booking;
 use App\Models\Payment;
 use Illuminate\Support\Facades\DB;
+use App\Models\User;
+use App\Services\Photographer\Booking\SlotConflictService;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -22,8 +24,10 @@ use Illuminate\Validation\ValidationException;
  */
 class SubmitPaymentAction
 {
-    public function __construct(protected LogActivityAction $activityLogger)
-    {
+    public function __construct(
+        protected LogActivityAction $activityLogger,
+        protected SlotConflictService $slotConflictService,
+    ) {
     }
 
     public function execute(Booking $booking, array $data): Payment
@@ -66,7 +70,34 @@ class SubmitPaymentAction
         // Lock the booking so a double-click / two tabs can't create two
         // submissions for the same booking.
         $payment = DB::transaction(function () use ($booking, $data, $plan) {
+            // Same lock order as payment verification (photographer row, then the booking).
+            User::where('id', $booking->photographer_id)->lockForUpdate()->firstOrFail();
             $locked = Booking::whereKey($booking->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== BookingStatus::Confirmed) {
+                throw ValidationException::withMessages([
+                    'booking' => ['This booking is not currently awaiting payment.'],
+                ]);
+            }
+
+            // The payment window is enforced here too, not only by the background expiry job.
+              if ($locked->isAwaitingOfferAcceptance()) {
+        throw ValidationException::withMessages([
+            'booking' => ['Please accept the offered schedule first. Payment opens once you accept it.'],
+        ]);
+    }
+
+    if ($locked->hold_expires_at !== null && $locked->hold_expires_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'booking' => ['The payment window for this booking has passed.'],
+                ]);
+            }
+
+            if ($this->slotConflictService->findPaidConflict($locked) !== null) {
+                throw ValidationException::withMessages([
+                    'booking' => ['Another booking currently holds this schedule, so payment is not available right now. Your reservation may be considered if the slot becomes available.'],
+                ]);
+            }
 
             if ($locked->payment_status !== BookingPaymentStatus::Pending) {
                 throw ValidationException::withMessages([

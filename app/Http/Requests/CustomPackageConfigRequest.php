@@ -75,10 +75,6 @@ class CustomPackageConfigRequest extends FormRequest
                     $validator->errors()->add($field, $message);
                 }
             }
-
-            if ($this->boolean('allows_multiple_sessions') && $model === 'fixed') {
-                $validator->errors()->add('allows_multiple_sessions', 'Multiple sessions are not available with fixed pricing.');
-            }
         });
     }
 }

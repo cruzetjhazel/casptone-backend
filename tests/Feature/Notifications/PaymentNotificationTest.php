@@ -2,10 +2,8 @@
 
 namespace Tests\Feature\Notifications;
 
-use App\Enums\PhotographerPaymentReferenceStatus;
 use App\Models\Booking;
 use App\Models\PhotographerPaymentConfig;
-use App\Models\PhotographerPaymentReference;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -28,94 +26,59 @@ class PaymentNotificationTest extends TestCase
         ]);
     }
 
-    protected function registerReference(Booking $booking, string $reference, float $amount): void
+    /** The client submits a GCash reference; returns the new payment's id. */
+    protected function submit(Booking $booking, string $reference, string $plan = 'full', float $amount = 10000): int
     {
-        PhotographerPaymentReference::create([
-            'photographer_id' => $booking->photographer_id,
-            'reference_number' => $reference,
-            'amount_received' => $amount,
-            'payment_date' => now()->format('Y-m-d'),
-            'status' => PhotographerPaymentReferenceStatus::Available,
-        ]);
-    }
-
-    public function test_matched_payment_notifies_both_parties_and_confirms_booking(): void
-    {
-        $booking = $this->acceptedBooking(10000);
-        $this->registerReference($booking, 'GC-REF-1', 10000);
         Sanctum::actingAs($booking->client);
 
-        $this->postJson("/api/client/bookings/{$booking->id}/payments", [
-            'plan' => 'full', 'reference_number' => 'GC-REF-1', 'payer_name' => 'Jane Doe',
-            'amount' => 10000, 'payment_date' => now()->format('Y-m-d'),
-        ])->assertCreated();
-
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\PaymentVerifiedNotification::class]);
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->photographer_id, 'type' => \App\Notifications\Payment\PaymentReceivedNotification::class]);
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Booking\BookingConfirmedNotification::class]);
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->photographer_id, 'type' => \App\Notifications\Booking\BookingConfirmedNotification::class]);
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\FullPaymentCompletedNotification::class]);
+        return $this->postJson("/api/client/bookings/{$booking->id}/payments", [
+            'plan' => $plan, 'reference_number' => $reference, 'payer_name' => 'Jane Doe',
+            'amount' => $amount, 'payment_date' => now()->format('Y-m-d'),
+        ])->assertCreated()->json('data.id');
     }
 
-    public function test_unmatched_payment_does_not_confirm_booking_and_notifies_pending_verification(): void
+    public function test_submitted_payment_notifies_both_parties_and_does_not_confirm_the_booking(): void
     {
         $booking = $this->acceptedBooking(10000);
-        Sanctum::actingAs($booking->client);
-
-        $this->postJson("/api/client/bookings/{$booking->id}/payments", [
-            'plan' => 'full', 'reference_number' => 'GC-REF-UNKNOWN', 'payer_name' => 'Jane Doe',
-            'amount' => 10000, 'payment_date' => now()->format('Y-m-d'),
-        ])->assertCreated();
+        $this->submit($booking, '2000000000001');
 
         $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\PaymentPendingVerificationNotification::class]);
         $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->photographer_id, 'type' => \App\Notifications\Payment\PaymentNeedsReviewNotification::class]);
         $this->assertDatabaseMissing('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Booking\BookingConfirmedNotification::class]);
     }
 
-    public function test_half_payment_match_notifies_remaining_balance_not_full_payment(): void
+    public function test_manual_verification_of_a_full_payment_confirms_booking_and_notifies_everyone(): void
     {
         $booking = $this->acceptedBooking(10000);
-        $this->registerReference($booking, 'GC-REF-HALF', 5000);
-        Sanctum::actingAs($booking->client);
-
-        $this->postJson("/api/client/bookings/{$booking->id}/payments", [
-            'plan' => 'half', 'reference_number' => 'GC-REF-HALF', 'payer_name' => 'Jane Doe',
-            'amount' => 5000, 'payment_date' => now()->format('Y-m-d'),
-        ])->assertCreated();
-
-        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\RemainingBalanceNotification::class]);
-        $this->assertDatabaseMissing('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\FullPaymentCompletedNotification::class]);
-    }
-
-    public function test_manual_verification_confirms_booking_and_notifies_client(): void
-    {
-        $booking = $this->acceptedBooking(10000);
-        Sanctum::actingAs($booking->client);
-        $response = $this->postJson("/api/client/bookings/{$booking->id}/payments", [
-            'plan' => 'full', 'reference_number' => 'GC-REF-MANUAL', 'payer_name' => 'Jane Doe',
-            'amount' => 10000, 'payment_date' => now()->format('Y-m-d'),
-        ])->assertCreated();
-
-        $paymentId = $response->json('data.id');
+        $paymentId = $this->submit($booking, '2000000000002');
 
         Sanctum::actingAs($booking->photographer);
         $this->postJson("/api/photographer/payments/{$paymentId}/verify")->assertOk();
 
         $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\PaymentManuallyVerifiedNotification::class]);
         $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Booking\BookingConfirmedNotification::class]);
+        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->photographer_id, 'type' => \App\Notifications\Booking\BookingConfirmedNotification::class]);
+        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\FullPaymentCompletedNotification::class]);
+        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->photographer_id, 'type' => \App\Notifications\Payment\FullPaymentCompletedNotification::class]);
         $this->assertEquals('confirmed', $booking->fresh()->status->value);
+    }
+
+    public function test_manual_verification_of_a_half_payment_notifies_remaining_balance_not_full_payment(): void
+    {
+        $booking = $this->acceptedBooking(10000);
+        $paymentId = $this->submit($booking, '2000000000003', 'half', 5000);
+
+        Sanctum::actingAs($booking->photographer);
+        $this->postJson("/api/photographer/payments/{$paymentId}/verify")->assertOk();
+
+        $this->assertDatabaseHas('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\RemainingBalanceNotification::class]);
+        $this->assertDatabaseMissing('notifications', ['notifiable_id' => $booking->client_id, 'type' => \App\Notifications\Payment\FullPaymentCompletedNotification::class]);
     }
 
     public function test_payment_rejection_notifies_client_and_does_not_confirm(): void
     {
         $booking = $this->acceptedBooking(10000);
-        Sanctum::actingAs($booking->client);
-        $response = $this->postJson("/api/client/bookings/{$booking->id}/payments", [
-            'plan' => 'full', 'reference_number' => 'GC-REF-REJECT', 'payer_name' => 'Jane Doe',
-            'amount' => 10000, 'payment_date' => now()->format('Y-m-d'),
-        ])->assertCreated();
-
-        $paymentId = $response->json('data.id');
+        $paymentId = $this->submit($booking, '2000000000004');
 
         Sanctum::actingAs($booking->photographer);
         $this->postJson("/api/photographer/payments/{$paymentId}/reject", ['notes' => 'No funds received.'])->assertOk();
